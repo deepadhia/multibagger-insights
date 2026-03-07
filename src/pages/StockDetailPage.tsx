@@ -30,7 +30,7 @@ export default function StockDetailPage() {
     setFetchingFinancials(true);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-financials", {
-        body: { stock_id: stock.id, ticker: stock.ticker },
+        body: { stock_id: stock.id, ticker: stock.ticker, screener_slug: (stock as any).screener_slug || stock.ticker },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
