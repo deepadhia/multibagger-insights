@@ -134,75 +134,37 @@ function parseScreenerData(html: string) {
     promoter_holding: null,
   };
 
-  // Extract top ratios from the "ratios" section
-  // These appear as <li class="flex flex-space-between"> with <span class="name"> and <span class="value">
-  const ratioPatterns: Record<string, RegExp> = {
-    "Market Cap": /Market Cap.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)/s,
-    "Current Price": /Current Price.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)/s,
-    "Stock P/E": /Stock P\/E.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)/s,
-    "ROCE": /ROCE.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)\s*%/s,
-    "ROE": /ROE.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)\s*%/s,
-    "Debt to Equity": /Debt to equity.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)/s,
-    "Promoter Holding": /Promoter holding.*?<span[^>]*class="number"[^>]*>\s*([\d,]+\.?\d*)\s*%/s,
-  };
-
-  // Try alternative patterns too
-  const altPatterns: Record<string, RegExp> = {
-    "ROCE": /ROCE\s*<\/span>\s*<span[^>]*>\s*([\d.]+)\s*%/s,
-    "ROE": /ROE\s*<\/span>\s*<span[^>]*>\s*([\d.]+)\s*%/s,
-    "Debt to Equity": /Debt to equity\s*<\/span>\s*<span[^>]*>\s*([\d.]+)/s,
-    "Promoter Holding": /Promoter holding\s*<\/span>\s*<span[^>]*>\s*([\d.]+)\s*%/s,
-  };
-
-  for (const [key, pattern] of Object.entries(ratioPatterns)) {
-    const match = html.match(pattern);
-    if (match) {
-      result.ratios[key] = match[1].replace(/,/g, "");
-    }
-  }
-
-  // Try alternative patterns for missing values
-  for (const [key, pattern] of Object.entries(altPatterns)) {
-    if (!result.ratios[key]) {
-      const match = html.match(pattern);
-      if (match) {
-        result.ratios[key] = match[1].replace(/,/g, "");
+  // Extract ratios from the top-ratios list
+  // Structure: <li ...><span class="name">ROCE</span> ... <span class="number">27.3</span> ... %
+  const ratioSection = html.match(/<ul id="top-ratios">([\s\S]*?)<\/ul>/);
+  if (ratioSection) {
+    const liItems = ratioSection[1].match(/<li[\s\S]*?<\/li>/g) || [];
+    for (const li of liItems) {
+      const nameMatch = li.match(/<span class="name">\s*([\s\S]*?)\s*<\/span>/);
+      const numberMatch = li.match(/<span class="number">([\d,\.]+)<\/span>/);
+      if (nameMatch && numberMatch) {
+        const name = nameMatch[1].replace(/<[^>]+>/g, "").trim();
+        const value = numberMatch[1].replace(/,/g, "");
+        result.ratios[name] = value;
       }
     }
   }
 
+  // Extract promoter holding (may be in ratios or elsewhere)
   if (result.ratios["Promoter Holding"]) {
     result.promoter_holding = parseFloat(result.ratios["Promoter Holding"]);
   }
 
-  // Extract yearly data from "Profit & Loss" section
-  // Look for the revenue/sales row and years
-  const yearMatch = html.match(/<thead>.*?<tr>.*?(<th[^>]*>.*?<\/th>)+.*?<\/tr>.*?<\/thead>/gs);
-  
-  // Try to extract years from the profit & loss table headers
-  const yearPattern = /Mar (\d{4})|FY(\d{4})/g;
-  const years: number[] = [];
-  let yMatch;
-  
-  // Look in the first 30% of HTML for the P&L table
-  const plSection = html.substring(0, Math.floor(html.length * 0.5));
-  while ((yMatch = yearPattern.exec(plSection)) !== null) {
-    const year = parseInt(yMatch[1] || yMatch[2]);
-    if (year >= 2015 && year <= 2030 && !years.includes(year)) {
-      years.push(year);
-    }
-  }
-
-  // For each found year, create a basic entry
-  // The detailed yearly data parsing from HTML tables is complex,
-  // so we use the top-level ratios + any available data
-  const currentYear = new Date().getFullYear();
+  // Get ROCE, ROE, D/E from ratios
   const roce = result.ratios["ROCE"] ? parseFloat(result.ratios["ROCE"]) : null;
   const roe = result.ratios["ROE"] ? parseFloat(result.ratios["ROE"]) : null;
-  const debtEquity = result.ratios["Debt to Equity"] ? parseFloat(result.ratios["Debt to Equity"]) : null;
+  
+  // Debt to equity might not be in default ratios
+  const debtEquity = result.ratios["Debt to equity"] ? parseFloat(result.ratios["Debt to equity"]) : null;
 
-  // Create entry for latest year with available ratios
-  if (roce || roe || debtEquity) {
+  // Create entry for current year with ratios
+  const currentYear = new Date().getFullYear();
+  if (roce !== null || roe !== null) {
     result.yearly.push({
       year: currentYear,
       revenue_growth: null,
