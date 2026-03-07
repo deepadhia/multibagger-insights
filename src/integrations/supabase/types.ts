@@ -1,0 +1,463 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.4"
+  }
+  public: {
+    Tables: {
+      financial_metrics: {
+        Row: {
+          created_at: string
+          debt_equity: number | null
+          free_cash_flow: number | null
+          id: string
+          profit_growth: number | null
+          promoter_holding: number | null
+          revenue_growth: number | null
+          roce: number | null
+          roe: number | null
+          stock_id: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          debt_equity?: number | null
+          free_cash_flow?: number | null
+          id?: string
+          profit_growth?: number | null
+          promoter_holding?: number | null
+          revenue_growth?: number | null
+          roce?: number | null
+          roe?: number | null
+          stock_id: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          debt_equity?: number | null
+          free_cash_flow?: number | null
+          id?: string
+          profit_growth?: number | null
+          promoter_holding?: number | null
+          revenue_growth?: number | null
+          roce?: number | null
+          roe?: number | null
+          stock_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_metrics_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_results: {
+        Row: {
+          capex: number | null
+          created_at: string
+          debt: number | null
+          ebitda_margin: number | null
+          id: string
+          quarter: string
+          revenue: number | null
+          stock_id: string
+        }
+        Insert: {
+          capex?: number | null
+          created_at?: string
+          debt?: number | null
+          ebitda_margin?: number | null
+          id?: string
+          quarter: string
+          revenue?: number | null
+          stock_id: string
+        }
+        Update: {
+          capex?: number | null
+          created_at?: string
+          debt?: number | null
+          ebitda_margin?: number | null
+          id?: string
+          quarter?: string
+          revenue?: number | null
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_results_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      management_commitments: {
+        Row: {
+          created_at: string
+          id: string
+          metric: string | null
+          quarter: string
+          statement: string
+          status: string
+          stock_id: string
+          target_value: string | null
+          timeline: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metric?: string | null
+          quarter: string
+          statement: string
+          status?: string
+          stock_id: string
+          target_value?: string | null
+          timeline?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metric?: string | null
+          quarter?: string
+          statement?: string
+          status?: string
+          stock_id?: string
+          target_value?: string | null
+          timeline?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "management_commitments_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prices: {
+        Row: {
+          change_percent: number | null
+          created_at: string
+          date: string
+          id: string
+          price: number
+          stock_id: string
+          volume: number | null
+        }
+        Insert: {
+          change_percent?: number | null
+          created_at?: string
+          date: string
+          id?: string
+          price: number
+          stock_id: string
+          volume?: number | null
+        }
+        Update: {
+          change_percent?: number | null
+          created_at?: string
+          date?: string
+          id?: string
+          price?: number
+          stock_id?: string
+          volume?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prices_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stocks: {
+        Row: {
+          buy_price: number | null
+          category: string
+          company_name: string
+          created_at: string
+          id: string
+          investment_thesis: string | null
+          sector: string | null
+          ticker: string
+        }
+        Insert: {
+          buy_price?: number | null
+          category?: string
+          company_name: string
+          created_at?: string
+          id?: string
+          investment_thesis?: string | null
+          sector?: string | null
+          ticker: string
+        }
+        Update: {
+          buy_price?: number | null
+          category?: string
+          company_name?: string
+          created_at?: string
+          id?: string
+          investment_thesis?: string | null
+          sector?: string | null
+          ticker?: string
+        }
+        Relationships: []
+      }
+      transcript_analysis: {
+        Row: {
+          analysis_summary: string | null
+          capacity_expansion: string | null
+          created_at: string
+          demand_outlook: string | null
+          growth_drivers: Json | null
+          guidance: string | null
+          hidden_signals: Json | null
+          id: string
+          important_quotes: Json | null
+          industry_tailwinds: Json | null
+          management_tone: string | null
+          margin_drivers: Json | null
+          quarter: string
+          risks: Json | null
+          sentiment_score: number | null
+          stock_id: string
+          year: number | null
+        }
+        Insert: {
+          analysis_summary?: string | null
+          capacity_expansion?: string | null
+          created_at?: string
+          demand_outlook?: string | null
+          growth_drivers?: Json | null
+          guidance?: string | null
+          hidden_signals?: Json | null
+          id?: string
+          important_quotes?: Json | null
+          industry_tailwinds?: Json | null
+          management_tone?: string | null
+          margin_drivers?: Json | null
+          quarter: string
+          risks?: Json | null
+          sentiment_score?: number | null
+          stock_id: string
+          year?: number | null
+        }
+        Update: {
+          analysis_summary?: string | null
+          capacity_expansion?: string | null
+          created_at?: string
+          demand_outlook?: string | null
+          growth_drivers?: Json | null
+          guidance?: string | null
+          hidden_signals?: Json | null
+          id?: string
+          important_quotes?: Json | null
+          industry_tailwinds?: Json | null
+          management_tone?: string | null
+          margin_drivers?: Json | null
+          quarter?: string
+          risks?: Json | null
+          sentiment_score?: number | null
+          stock_id?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcript_analysis_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transcripts: {
+        Row: {
+          id: string
+          quarter: string
+          stock_id: string
+          transcript_text: string
+          uploaded_at: string
+          year: number
+        }
+        Insert: {
+          id?: string
+          quarter: string
+          stock_id: string
+          transcript_text: string
+          uploaded_at?: string
+          year: number
+        }
+        Update: {
+          id?: string
+          quarter?: string
+          stock_id?: string
+          transcript_text?: string
+          uploaded_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcripts_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
