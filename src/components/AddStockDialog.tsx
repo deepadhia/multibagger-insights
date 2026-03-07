@@ -81,9 +81,15 @@ export function AddStockDialog() {
               </Select>
             </div>
           </div>
-          <div>
-            <Label className="font-mono text-xs">Buy Price</Label>
-            <Input name="buy_price" type="number" step="0.01" className="bg-muted border-border font-mono" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="font-mono text-xs">Buy Price</Label>
+              <Input name="buy_price" type="number" step="0.01" className="bg-muted border-border font-mono" />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Screener Slug</Label>
+              <Input name="screener_slug" placeholder="e.g. HBLENGINE" className="bg-muted border-border font-mono" />
+            </div>
           </div>
           <div>
             <Label className="font-mono text-xs">Investment Thesis</Label>

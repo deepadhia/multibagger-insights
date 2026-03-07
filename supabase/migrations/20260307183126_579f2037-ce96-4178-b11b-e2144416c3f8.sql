@@ -1,0 +1,1 @@
+ALTER TABLE public.stocks ADD COLUMN screener_slug TEXT;

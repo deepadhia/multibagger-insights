@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX idx_financial_metrics_stock_year ON public.financial_metrics(stock_id, year);

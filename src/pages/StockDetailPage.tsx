@@ -1,17 +1,64 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStock, useStockAnalysis, useStockCommitments } from "@/hooks/useStocks";
+import { useFinancialMetrics } from "@/hooks/useFinancials";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { RefreshCw, Loader2, DollarSign } from "lucide-react";
 
 export default function StockDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: stock, isLoading } = useStock(id!);
   const { data: analyses } = useStockAnalysis(id!);
   const { data: commitments } = useStockCommitments(id!);
+  const { data: financials } = useFinancialMetrics(id!);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [fetchingFinancials, setFetchingFinancials] = useState(false);
+  const [fetchingPrice, setFetchingPrice] = useState(false);
+
+  const handleFetchFinancials = async () => {
+    if (!stock) return;
+    setFetchingFinancials(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-financials", {
+        body: { stock_id: stock.id, ticker: stock.ticker, screener_slug: (stock as any).screener_slug || stock.ticker },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
+      toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setFetchingFinancials(false);
+    }
+  };
+
+  const handleFetchPrice = async () => {
+    if (!stock) return;
+    setFetchingPrice(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-price", {
+        body: { ticker: stock.ticker },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({ title: "Price updated", description: `${stock.ticker}: ₹${data.price} (${data.change_percent > 0 ? "+" : ""}${data.change_percent}%)` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setFetchingPrice(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -40,6 +87,8 @@ export default function StockDetailPage() {
   const totalCommitments = commitments?.length || 0;
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
 
+  const latestFinancial = financials?.[financials.length - 1];
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -53,19 +102,46 @@ export default function StockDetailPage() {
             <p className="text-foreground mt-1">{stock.company_name}</p>
             <p className="text-sm text-muted-foreground">{stock.sector || "No sector"}</p>
           </div>
-          {stock.buy_price && (
-            <div className="text-right">
-              <p className="text-xs font-mono text-muted-foreground uppercase">Buy Price</p>
-              <p className="text-xl font-mono font-bold text-foreground">₹{stock.buy_price}</p>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleFetchPrice} disabled={fetchingPrice} className="font-mono">
+              {fetchingPrice ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
+              <span className="ml-1">Price</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleFetchFinancials} disabled={fetchingFinancials} className="font-mono">
+              {fetchingFinancials ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="ml-1">Financials</span>
+            </Button>
+          </div>
         </div>
+
+        {/* Buy Price */}
+        {stock.buy_price && (
+          <div className="text-right">
+            <p className="text-xs font-mono text-muted-foreground uppercase">Buy Price</p>
+            <p className="text-xl font-mono font-bold text-foreground">₹{stock.buy_price}</p>
+          </div>
+        )}
 
         {/* Thesis */}
         {stock.investment_thesis && (
           <Card className="p-4 bg-card border-border card-glow">
             <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-2">Investment Thesis</h3>
             <p className="text-sm text-foreground">{stock.investment_thesis}</p>
+          </Card>
+        )}
+
+        {/* Financial Metrics */}
+        {latestFinancial && (
+          <Card className="p-4 bg-card border-border card-glow">
+            <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">Financial Ratios</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <MetricItem label="ROCE" value={latestFinancial.roce} suffix="%" good={latestFinancial.roce ? latestFinancial.roce >= 15 : false} />
+              <MetricItem label="ROE" value={latestFinancial.roe} suffix="%" good={latestFinancial.roe ? latestFinancial.roe >= 15 : false} />
+              <MetricItem label="D/E" value={latestFinancial.debt_equity} good={latestFinancial.debt_equity ? latestFinancial.debt_equity <= 1 : false} />
+              <MetricItem label="Rev Growth" value={latestFinancial.revenue_growth} suffix="%" good={latestFinancial.revenue_growth ? latestFinancial.revenue_growth >= 15 : false} />
+              <MetricItem label="Profit Growth" value={latestFinancial.profit_growth} suffix="%" good={latestFinancial.profit_growth ? latestFinancial.profit_growth >= 15 : false} />
+              <MetricItem label="Promoter %" value={latestFinancial.promoter_holding} suffix="%" good={latestFinancial.promoter_holding ? latestFinancial.promoter_holding >= 50 : false} />
+            </div>
           </Card>
         )}
 
@@ -192,6 +268,17 @@ export default function StockDetailPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function MetricItem({ label, value, suffix, good }: { label: string; value: number | null; suffix?: string; good: boolean }) {
+  return (
+    <div className="text-center p-2 bg-muted rounded">
+      <p className="text-[10px] font-mono text-muted-foreground uppercase">{label}</p>
+      <p className={`text-lg font-mono font-bold ${value !== null ? (good ? "text-terminal-green" : "text-terminal-amber") : "text-muted-foreground"}`}>
+        {value !== null ? `${value}${suffix || ""}` : "—"}
+      </p>
+    </div>
   );
 }
 
