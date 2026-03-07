@@ -1,1 +1,7 @@
 project_id = "vhmjyioitgvwqsjvjzql"
+
+[functions.analyze-transcript]
+verify_jwt = false
+
+[functions.fetch-price]
+verify_jwt = false
