@@ -195,6 +195,7 @@ export type Database = {
           created_at: string
           id: string
           investment_thesis: string | null
+          screener_slug: string | null
           sector: string | null
           ticker: string
         }
@@ -205,6 +206,7 @@ export type Database = {
           created_at?: string
           id?: string
           investment_thesis?: string | null
+          screener_slug?: string | null
           sector?: string | null
           ticker: string
         }
@@ -215,6 +217,7 @@ export type Database = {
           created_at?: string
           id?: string
           investment_thesis?: string | null
+          screener_slug?: string | null
           sector?: string | null
           ticker?: string
         }
