@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.fetch-price]
 verify_jwt = false
+
+[functions.fetch-financials]
+verify_jwt = false
