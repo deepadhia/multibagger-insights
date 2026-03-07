@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { stock_id, ticker } = await req.json();
+    const { stock_id, ticker, screener_slug } = await req.json();
 
     if (!stock_id || !ticker) {
       return new Response(JSON.stringify({ error: "stock_id and ticker are required" }), {
@@ -27,8 +27,9 @@ serve(async (req) => {
       });
     }
 
-    // Fetch the company page from Screener.in
-    const screenerUrl = `https://www.screener.in/company/${encodeURIComponent(ticker)}/consolidated/`;
+    // Use screener_slug if provided, otherwise try ticker
+    const slug = screener_slug || ticker;
+    const screenerUrl = `https://www.screener.in/company/${encodeURIComponent(slug)}/consolidated/`;
     console.log("Fetching:", screenerUrl);
 
     const response = await fetch(screenerUrl, {
@@ -42,7 +43,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       // Try standalone if consolidated fails
-      const standaloneUrl = `https://www.screener.in/company/${encodeURIComponent(ticker)}/`;
+      const standaloneUrl = `https://www.screener.in/company/${encodeURIComponent(slug)}/`;
       console.log("Trying standalone:", standaloneUrl);
       const resp2 = await fetch(standaloneUrl, {
         headers: {
