@@ -14,7 +14,315 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      financial_metrics: {
+        Row: {
+          created_at: string
+          debt_equity: number | null
+          free_cash_flow: number | null
+          id: string
+          profit_growth: number | null
+          promoter_holding: number | null
+          revenue_growth: number | null
+          roce: number | null
+          roe: number | null
+          stock_id: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          debt_equity?: number | null
+          free_cash_flow?: number | null
+          id?: string
+          profit_growth?: number | null
+          promoter_holding?: number | null
+          revenue_growth?: number | null
+          roce?: number | null
+          roe?: number | null
+          stock_id: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          debt_equity?: number | null
+          free_cash_flow?: number | null
+          id?: string
+          profit_growth?: number | null
+          promoter_holding?: number | null
+          revenue_growth?: number | null
+          roce?: number | null
+          roe?: number | null
+          stock_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_metrics_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_results: {
+        Row: {
+          capex: number | null
+          created_at: string
+          debt: number | null
+          ebitda_margin: number | null
+          id: string
+          quarter: string
+          revenue: number | null
+          stock_id: string
+        }
+        Insert: {
+          capex?: number | null
+          created_at?: string
+          debt?: number | null
+          ebitda_margin?: number | null
+          id?: string
+          quarter: string
+          revenue?: number | null
+          stock_id: string
+        }
+        Update: {
+          capex?: number | null
+          created_at?: string
+          debt?: number | null
+          ebitda_margin?: number | null
+          id?: string
+          quarter?: string
+          revenue?: number | null
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_results_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      management_commitments: {
+        Row: {
+          created_at: string
+          id: string
+          metric: string | null
+          quarter: string
+          statement: string
+          status: string
+          stock_id: string
+          target_value: string | null
+          timeline: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metric?: string | null
+          quarter: string
+          statement: string
+          status?: string
+          stock_id: string
+          target_value?: string | null
+          timeline?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metric?: string | null
+          quarter?: string
+          statement?: string
+          status?: string
+          stock_id?: string
+          target_value?: string | null
+          timeline?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "management_commitments_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prices: {
+        Row: {
+          change_percent: number | null
+          created_at: string
+          date: string
+          id: string
+          price: number
+          stock_id: string
+          volume: number | null
+        }
+        Insert: {
+          change_percent?: number | null
+          created_at?: string
+          date: string
+          id?: string
+          price: number
+          stock_id: string
+          volume?: number | null
+        }
+        Update: {
+          change_percent?: number | null
+          created_at?: string
+          date?: string
+          id?: string
+          price?: number
+          stock_id?: string
+          volume?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prices_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stocks: {
+        Row: {
+          buy_price: number | null
+          category: string
+          company_name: string
+          created_at: string
+          id: string
+          investment_thesis: string | null
+          sector: string | null
+          ticker: string
+        }
+        Insert: {
+          buy_price?: number | null
+          category?: string
+          company_name: string
+          created_at?: string
+          id?: string
+          investment_thesis?: string | null
+          sector?: string | null
+          ticker: string
+        }
+        Update: {
+          buy_price?: number | null
+          category?: string
+          company_name?: string
+          created_at?: string
+          id?: string
+          investment_thesis?: string | null
+          sector?: string | null
+          ticker?: string
+        }
+        Relationships: []
+      }
+      transcript_analysis: {
+        Row: {
+          analysis_summary: string | null
+          capacity_expansion: string | null
+          created_at: string
+          demand_outlook: string | null
+          growth_drivers: Json | null
+          guidance: string | null
+          hidden_signals: Json | null
+          id: string
+          important_quotes: Json | null
+          industry_tailwinds: Json | null
+          management_tone: string | null
+          margin_drivers: Json | null
+          quarter: string
+          risks: Json | null
+          sentiment_score: number | null
+          stock_id: string
+          year: number | null
+        }
+        Insert: {
+          analysis_summary?: string | null
+          capacity_expansion?: string | null
+          created_at?: string
+          demand_outlook?: string | null
+          growth_drivers?: Json | null
+          guidance?: string | null
+          hidden_signals?: Json | null
+          id?: string
+          important_quotes?: Json | null
+          industry_tailwinds?: Json | null
+          management_tone?: string | null
+          margin_drivers?: Json | null
+          quarter: string
+          risks?: Json | null
+          sentiment_score?: number | null
+          stock_id: string
+          year?: number | null
+        }
+        Update: {
+          analysis_summary?: string | null
+          capacity_expansion?: string | null
+          created_at?: string
+          demand_outlook?: string | null
+          growth_drivers?: Json | null
+          guidance?: string | null
+          hidden_signals?: Json | null
+          id?: string
+          important_quotes?: Json | null
+          industry_tailwinds?: Json | null
+          management_tone?: string | null
+          margin_drivers?: Json | null
+          quarter?: string
+          risks?: Json | null
+          sentiment_score?: number | null
+          stock_id?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcript_analysis_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transcripts: {
+        Row: {
+          id: string
+          quarter: string
+          stock_id: string
+          transcript_text: string
+          uploaded_at: string
+          year: number
+        }
+        Insert: {
+          id?: string
+          quarter: string
+          stock_id: string
+          transcript_text: string
+          uploaded_at?: string
+          year: number
+        }
+        Update: {
+          id?: string
+          quarter?: string
+          stock_id?: string
+          transcript_text?: string
+          uploaded_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcripts_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
