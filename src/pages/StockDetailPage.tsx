@@ -10,8 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
 import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -107,6 +107,9 @@ export default function StockDetailPage() {
   const totalCommitments = commitments?.length || 0;
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
 
+  // Multibagger signal detection
+  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || []);
+
   // Chart data
   const sentimentData = analyses?.map(a => ({
     quarter: a.quarter,
@@ -116,6 +119,10 @@ export default function StockDetailPage() {
 
   const yearlyChartData = financials?.map(f => ({
     year: f.year,
+    revenue: (f as any).revenue,
+    netProfit: (f as any).net_profit,
+    opm: (f as any).opm,
+    eps: (f as any).eps,
     roce: f.roce,
     roe: f.roe,
     revGrowth: f.revenue_growth,
@@ -155,7 +162,6 @@ export default function StockDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Price display */}
             {latestPrice && (
               <div className="flex items-center gap-2 mr-4">
                 <span className="text-xl font-mono font-bold text-foreground">₹{Number(latestPrice.price).toLocaleString()}</span>
@@ -178,16 +184,38 @@ export default function StockDetailPage() {
           </div>
         </div>
 
-        {/* ── TOP RATIOS BAR (screener-style) ── */}
+        {/* ── TOP RATIOS BAR ── */}
         {latestFinancial && (
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
+          <div className="grid grid-cols-3 md:grid-cols-8 gap-1">
             <RatioCard label="ROCE" value={latestFinancial.roce} suffix="%" good={(latestFinancial.roce ?? 0) >= 15} />
             <RatioCard label="ROE" value={latestFinancial.roe} suffix="%" good={(latestFinancial.roe ?? 0) >= 15} />
-            <RatioCard label="D/E" value={latestFinancial.debt_equity} good={(latestFinancial.debt_equity ?? 999) <= 1} invertColor />
+            <RatioCard label="D/E" value={latestFinancial.debt_equity} good={(latestFinancial.debt_equity ?? 999) <= 1} />
+            <RatioCard label="OPM" value={(latestFinancial as any).opm} suffix="%" good={((latestFinancial as any).opm ?? 0) >= 15} />
             <RatioCard label="Rev Growth" value={latestFinancial.revenue_growth} suffix="%" good={(latestFinancial.revenue_growth ?? 0) >= 15} />
             <RatioCard label="Profit Growth" value={latestFinancial.profit_growth} suffix="%" good={(latestFinancial.profit_growth ?? 0) >= 15} />
+            <RatioCard label="EPS" value={(latestFinancial as any).eps} good={((latestFinancial as any).eps ?? 0) > 0} />
             <RatioCard label="Promoter %" value={latestFinancial.promoter_holding} suffix="%" good={(latestFinancial.promoter_holding ?? 0) >= 50} />
           </div>
+        )}
+
+        {/* ── MULTIBAGGER SIGNALS ── */}
+        {signals.length > 0 && (
+          <Card className="p-4 bg-card border-border card-glow">
+            <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+              <Zap className="h-3 w-3 text-terminal-amber" /> Multibagger Signals
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {signals.map((s, i) => (
+                <Badge key={i} variant="outline" className={`font-mono text-[10px] ${
+                  s.type === "bullish" ? "text-terminal-green border-terminal-green/30 bg-terminal-green/10" :
+                  s.type === "warning" ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10" :
+                  "text-terminal-red border-terminal-red/30 bg-terminal-red/10"
+                }`}>
+                  {s.type === "bullish" ? "✓" : s.type === "warning" ? "⚠" : "✗"} {s.label}
+                </Badge>
+              ))}
+            </div>
+          </Card>
         )}
 
         {/* ── THESIS + BUY PRICE ── */}
@@ -259,9 +287,49 @@ export default function StockDetailPage() {
                 )}
               </Card>
 
+              {/* Revenue & Profit Trend */}
+              <Card className="p-4 bg-card border-border card-glow">
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Revenue & Profit (Cr)</h3>
+                {yearlyChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={yearlyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 16%)" />
+                      <XAxis dataKey="year" tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={chartTooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 10, fontFamily: "JetBrains Mono" }} />
+                      <Bar dataKey="revenue" name="Revenue" fill="hsl(200 80% 55%)" radius={[2, 2, 0, 0]} opacity={0.7} />
+                      <Line type="monotone" dataKey="netProfit" name="Net Profit" stroke="hsl(142 70% 45%)" strokeWidth={2} dot={{ r: 3 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <EmptyState text="No financial data. Click 'Financials' to fetch." />
+                )}
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* ROCE/ROE Trend */}
+              {yearlyChartData.some(d => d.roce || d.roe) && (
+                <Card className="p-4 bg-card border-border card-glow">
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">ROCE & ROE Trend (%)</h3>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={yearlyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 16%)" />
+                      <XAxis dataKey="year" tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={chartTooltipStyle} />
+                      <ReferenceLine y={15} stroke="hsl(215 15% 35%)" strokeDasharray="3 3" label={{ value: "15%", fill: "hsl(215 15% 40%)", fontSize: 9 }} />
+                      <Line type="monotone" dataKey="roce" name="ROCE" stroke="hsl(142 70% 45%)" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                      <Line type="monotone" dataKey="roe" name="ROE" stroke="hsl(185 80% 55%)" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Card>
+              )}
+
               {/* Sentiment Trend */}
               <Card className="p-4 bg-card border-border card-glow">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Sentiment Trend</h3>
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Sentiment Trend (from AI Analysis)</h3>
                 {sentimentData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={sentimentData}>
@@ -275,7 +343,7 @@ export default function StockDetailPage() {
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <EmptyState text="No analysis yet. Upload a transcript to analyze." />
+                  <EmptyState text="No analysis yet. Upload a transcript on the Transcripts page → AI analyzes it automatically." />
                 )}
               </Card>
             </div>
@@ -285,7 +353,7 @@ export default function StockDetailPage() {
               <Card className="p-4 bg-card border-border card-glow">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Latest — {latestAnalysis.quarter} {latestAnalysis.year}
+                    Latest AI Analysis — {latestAnalysis.quarter} {latestAnalysis.year}
                   </h3>
                   <div className="flex gap-2">
                     {latestAnalysis.management_tone && <ToneBadge tone={latestAnalysis.management_tone} />}
@@ -295,12 +363,9 @@ export default function StockDetailPage() {
                 {latestAnalysis.analysis_summary && (
                   <p className="text-sm text-foreground leading-relaxed">{latestAnalysis.analysis_summary}</p>
                 )}
-                {latestAnalysis.guidance && (
-                  <div className="mt-3 p-3 bg-muted rounded border border-border">
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-terminal-cyan mb-1">Guidance</p>
-                    <p className="text-xs text-foreground">{latestAnalysis.guidance}</p>
-                  </div>
-                )}
+                <p className="text-[10px] text-muted-foreground mt-2 italic">
+                  ℹ Analysis data comes from AI processing of earnings call transcripts you upload on the Transcripts page.
+                </p>
               </Card>
             )}
 
@@ -330,21 +395,66 @@ export default function StockDetailPage() {
 
           {/* ═══ FINANCIALS TAB ═══ */}
           <TabsContent value="financials" className="space-y-4 mt-4">
-            {/* Yearly P&L Table */}
+            {/* Profit & Loss Table */}
             {financials && financials.length > 0 && (
               <Card className="p-4 bg-card border-border card-glow overflow-hidden">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Yearly Financial Metrics</h3>
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Profit & Loss (₹ Cr)</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full data-grid">
                     <thead>
                       <tr className="border-b border-border">
                         <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Year</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Revenue</th>
                         <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Rev Growth</th>
-                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Profit Growth</th>
-                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">ROCE</th>
-                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">ROE</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Net Profit</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Prof Growth</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">OPM %</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">EPS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {financials.map((f) => (
+                        <tr key={f.id} className="border-b border-border/50 hover:bg-muted/30">
+                          <td className="p-2 font-semibold text-foreground">{f.year}</td>
+                          <td className="p-2 text-right text-foreground font-mono">
+                            {(f as any).revenue != null ? Number((f as any).revenue).toLocaleString() : "—"}
+                          </td>
+                          <td className="p-2 text-right">
+                            <ColoredValue value={f.revenue_growth} suffix="%" goodAbove={15} />
+                          </td>
+                          <td className="p-2 text-right text-foreground font-mono">
+                            {(f as any).net_profit != null ? Number((f as any).net_profit).toLocaleString() : "—"}
+                          </td>
+                          <td className="p-2 text-right">
+                            <ColoredValue value={f.profit_growth} suffix="%" goodAbove={15} />
+                          </td>
+                          <td className="p-2 text-right">
+                            <ColoredValue value={(f as any).opm} suffix="%" goodAbove={15} />
+                          </td>
+                          <td className="p-2 text-right text-foreground font-mono">
+                            {(f as any).eps != null ? (f as any).eps : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* Key Ratios Table */}
+            {financials && financials.length > 0 && (
+              <Card className="p-4 bg-card border-border card-glow overflow-hidden">
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Key Ratios</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full data-grid">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Year</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">ROCE %</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">ROE %</th>
                         <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">D/E</th>
-                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">FCF</th>
+                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">FCF (Cr)</th>
                         <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Promoter %</th>
                       </tr>
                     </thead>
@@ -352,12 +462,6 @@ export default function StockDetailPage() {
                       {financials.map((f) => (
                         <tr key={f.id} className="border-b border-border/50 hover:bg-muted/30">
                           <td className="p-2 font-semibold text-foreground">{f.year}</td>
-                          <td className="p-2 text-right">
-                            <ColoredValue value={f.revenue_growth} suffix="%" goodAbove={15} />
-                          </td>
-                          <td className="p-2 text-right">
-                            <ColoredValue value={f.profit_growth} suffix="%" goodAbove={15} />
-                          </td>
                           <td className="p-2 text-right">
                             <ColoredValue value={f.roce} suffix="%" goodAbove={15} />
                           </td>
@@ -381,21 +485,22 @@ export default function StockDetailPage() {
               </Card>
             )}
 
-            {/* ROCE/ROE Chart */}
+            {/* Charts */}
             {yearlyChartData.length > 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card className="p-4 bg-card border-border card-glow">
-                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">ROCE & ROE Trend</h3>
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">OPM & EPS Trend</h3>
                   <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={yearlyChartData}>
+                    <ComposedChart data={yearlyChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 16%)" />
                       <XAxis dataKey="year" tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <YAxis yAxisId="opm" tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <YAxis yAxisId="eps" orientation="right" tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
                       <Tooltip contentStyle={chartTooltipStyle} />
-                      <ReferenceLine y={15} stroke="hsl(215 15% 35%)" strokeDasharray="3 3" />
-                      <Line type="monotone" dataKey="roce" name="ROCE %" stroke="hsl(142 70% 45%)" strokeWidth={2} dot={{ r: 3 }} />
-                      <Line type="monotone" dataKey="roe" name="ROE %" stroke="hsl(185 80% 55%)" strokeWidth={2} dot={{ r: 3 }} />
-                    </LineChart>
+                      <Legend wrapperStyle={{ fontSize: 10, fontFamily: "JetBrains Mono" }} />
+                      <Bar yAxisId="eps" dataKey="eps" name="EPS (₹)" fill="hsl(200 80% 55%)" radius={[2, 2, 0, 0]} opacity={0.6} />
+                      <Line yAxisId="opm" type="monotone" dataKey="opm" name="OPM %" stroke="hsl(45 90% 55%)" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </Card>
 
@@ -408,6 +513,7 @@ export default function StockDetailPage() {
                       <YAxis tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
                       <Tooltip contentStyle={chartTooltipStyle} />
                       <ReferenceLine y={0} stroke="hsl(215 15% 35%)" />
+                      <Legend wrapperStyle={{ fontSize: 10, fontFamily: "JetBrains Mono" }} />
                       <Bar dataKey="revGrowth" name="Revenue %" fill="hsl(200 80% 55%)" radius={[2, 2, 0, 0]} />
                       <Bar dataKey="profGrowth" name="Profit %" fill="hsl(142 70% 45%)" radius={[2, 2, 0, 0]} />
                     </BarChart>
@@ -416,7 +522,7 @@ export default function StockDetailPage() {
               </div>
             )}
 
-            {/* Quarterly Results Table */}
+            {/* Quarterly Results */}
             {quarterlyResults && quarterlyResults.length > 0 && (
               <Card className="p-4 bg-card border-border card-glow overflow-hidden">
                 <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Quarterly Results</h3>
@@ -427,8 +533,6 @@ export default function StockDetailPage() {
                         <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Quarter</th>
                         <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Revenue (Cr)</th>
                         <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">OPM %</th>
-                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Debt (Cr)</th>
-                        <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Capex (Cr)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -441,12 +545,6 @@ export default function StockDetailPage() {
                           <td className="p-2 text-right">
                             <ColoredValue value={q.ebitda_margin} suffix="%" goodAbove={15} />
                           </td>
-                          <td className="p-2 text-right text-foreground font-mono">
-                            {q.debt !== null ? Number(q.debt).toLocaleString() : "—"}
-                          </td>
-                          <td className="p-2 text-right text-foreground font-mono">
-                            {q.capex !== null ? Number(q.capex).toLocaleString() : "—"}
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -455,12 +553,12 @@ export default function StockDetailPage() {
               </Card>
             )}
 
-            {/* Quarterly Revenue Chart */}
+            {/* Quarterly Chart */}
             {quarterlyChartData.length > 0 && (
               <Card className="p-4 bg-card border-border card-glow">
                 <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Quarterly Revenue & OPM</h3>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={quarterlyChartData}>
+                  <ComposedChart data={quarterlyChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 16%)" />
                     <XAxis dataKey="quarter" tick={{ fill: "hsl(215 15% 50%)", fontSize: 9, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={50} />
                     <YAxis yAxisId="rev" tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
@@ -468,7 +566,7 @@ export default function StockDetailPage() {
                     <Tooltip contentStyle={chartTooltipStyle} />
                     <Bar yAxisId="rev" dataKey="revenue" name="Revenue (Cr)" fill="hsl(200 80% 55%)" radius={[2, 2, 0, 0]} />
                     <Line yAxisId="opm" type="monotone" dataKey="opm" name="OPM %" stroke="hsl(45 90% 55%)" strokeWidth={2} dot={{ r: 3 }} />
-                  </BarChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
               </Card>
             )}
@@ -480,9 +578,14 @@ export default function StockDetailPage() {
 
           {/* ═══ ANALYSIS TAB ═══ */}
           <TabsContent value="analysis" className="space-y-4 mt-4">
+            <Card className="p-3 bg-muted/50 border-border rounded">
+              <p className="text-xs text-muted-foreground">
+                <strong>How it works:</strong> Go to the <strong>Transcripts</strong> page → select this stock → paste an earnings call transcript → AI automatically extracts growth drivers, risks, sentiment, management tone, and commitments.
+              </p>
+            </Card>
+
             {latestAnalysis ? (
               <>
-                {/* Full Latest Analysis */}
                 <Card className="p-5 bg-card border-border card-glow">
                   <div className="flex items-center justify-between mb-4">
                     <div>
@@ -501,7 +604,6 @@ export default function StockDetailPage() {
                     <p className="text-sm text-foreground leading-relaxed mb-5">{latestAnalysis.analysis_summary}</p>
                   )}
 
-                  {/* Guidance & Outlook */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
                     {latestAnalysis.guidance && (
                       <InfoCard icon={<Target className="h-3.5 w-3.5 text-terminal-cyan" />} title="Guidance" text={latestAnalysis.guidance} />
@@ -514,7 +616,6 @@ export default function StockDetailPage() {
                     )}
                   </div>
 
-                  {/* Drivers & Risks Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {latestAnalysis.growth_drivers && (
                       <InsightList title="Growth Drivers" items={latestAnalysis.growth_drivers as string[]} icon={<TrendingUp className="h-3 w-3" />} color="terminal-green" />
@@ -533,7 +634,6 @@ export default function StockDetailPage() {
                     )}
                   </div>
 
-                  {/* Key Quotes */}
                   {latestAnalysis.important_quotes && (latestAnalysis.important_quotes as string[]).length > 0 && (
                     <div className="mt-5">
                       <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
@@ -550,7 +650,6 @@ export default function StockDetailPage() {
                   )}
                 </Card>
 
-                {/* Historical Analyses */}
                 {analyses && analyses.length > 1 && (
                   <Card className="p-4 bg-card border-border card-glow">
                     <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Analysis History</h3>
@@ -572,7 +671,7 @@ export default function StockDetailPage() {
                 )}
               </>
             ) : (
-              <EmptyState text="No analysis yet. Go to Transcripts page to upload and analyze an earnings call." />
+              <EmptyState text="No analysis yet. Go to Transcripts page → upload an earnings call → AI will analyze it." />
             )}
           </TabsContent>
 
@@ -580,7 +679,6 @@ export default function StockDetailPage() {
           <TabsContent value="commitments" className="space-y-4 mt-4">
             {commitments && commitments.length > 0 ? (
               <>
-                {/* Credibility Header */}
                 <Card className="p-4 bg-card border-border card-glow">
                   <div className="flex items-center gap-6">
                     <div className="text-center min-w-[100px]">
@@ -605,7 +703,6 @@ export default function StockDetailPage() {
                   </div>
                 </Card>
 
-                {/* Commitments List */}
                 <Card className="p-4 bg-card border-border card-glow overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full data-grid">
@@ -651,10 +748,83 @@ export default function StockDetailPage() {
   );
 }
 
+// ── MULTIBAGGER SIGNAL DETECTION ──
+function detectMultibaggerSignals(
+  financials: any[],
+  latestAnalysis: any,
+  commitments: any[]
+): { label: string; type: "bullish" | "warning" | "bearish" }[] {
+  const signals: { label: string; type: "bullish" | "warning" | "bearish" }[] = [];
+  if (financials.length < 2) return signals;
+
+  const latest = financials[financials.length - 1];
+  const prev = financials[financials.length - 2];
+
+  // ROCE > 15% consistently
+  const highRoceYears = financials.filter(f => (f.roce ?? 0) >= 15).length;
+  if (highRoceYears >= 3) signals.push({ label: `ROCE >15% for ${highRoceYears}yr`, type: "bullish" });
+  else if (latest.roce && latest.roce < 10) signals.push({ label: `Low ROCE ${latest.roce}%`, type: "bearish" });
+
+  // Revenue growth acceleration
+  if (latest.revenue_growth && prev.revenue_growth && latest.revenue_growth > prev.revenue_growth && latest.revenue_growth > 15) {
+    signals.push({ label: "Revenue growth accelerating", type: "bullish" });
+  }
+
+  // Profit growth > revenue growth (operating leverage)
+  if (latest.profit_growth && latest.revenue_growth && latest.profit_growth > latest.revenue_growth) {
+    signals.push({ label: "Operating leverage visible", type: "bullish" });
+  }
+
+  // OPM expanding
+  if (latest.opm && prev.opm && latest.opm > prev.opm) {
+    signals.push({ label: `OPM expanding (${prev.opm}→${latest.opm}%)`, type: "bullish" });
+  } else if (latest.opm && prev.opm && latest.opm < prev.opm - 3) {
+    signals.push({ label: "OPM declining", type: "warning" });
+  }
+
+  // Low debt
+  if (latest.debt_equity !== null && latest.debt_equity <= 0.5) {
+    signals.push({ label: "Low debt (D/E ≤ 0.5)", type: "bullish" });
+  } else if (latest.debt_equity !== null && latest.debt_equity > 2) {
+    signals.push({ label: `High debt D/E ${latest.debt_equity}`, type: "bearish" });
+  }
+
+  // Positive FCF
+  const positiveFCFYears = financials.filter(f => (f.free_cash_flow ?? 0) > 0).length;
+  if (positiveFCFYears >= 3) signals.push({ label: `Positive FCF ${positiveFCFYears}yr`, type: "bullish" });
+
+  // EPS growth
+  if (latest.eps && prev.eps && prev.eps > 0) {
+    const epsGrowth = ((latest.eps - prev.eps) / prev.eps) * 100;
+    if (epsGrowth > 20) signals.push({ label: `EPS +${Math.round(epsGrowth)}% YoY`, type: "bullish" });
+  }
+
+  // High promoter holding
+  if (latest.promoter_holding && latest.promoter_holding >= 60) {
+    signals.push({ label: `High promoter ${latest.promoter_holding}%`, type: "bullish" });
+  }
+
+  // Sentiment from AI analysis
+  if (latestAnalysis?.sentiment_score >= 8) {
+    signals.push({ label: `AI Sentiment ${latestAnalysis.sentiment_score}/10`, type: "bullish" });
+  } else if (latestAnalysis?.sentiment_score && latestAnalysis.sentiment_score <= 4) {
+    signals.push({ label: `Low sentiment ${latestAnalysis.sentiment_score}/10`, type: "bearish" });
+  }
+
+  // Management credibility
+  const achieved = commitments.filter(c => c.status === "Achieved").length;
+  const total = commitments.length;
+  if (total >= 3 && achieved / total >= 0.7) {
+    signals.push({ label: `Mgmt credibility ${Math.round(achieved / total * 100)}%`, type: "bullish" });
+  }
+
+  return signals;
+}
+
 // ── HELPER COMPONENTS ──
 
-function RatioCard({ label, value, suffix, good, invertColor }: {
-  label: string; value: number | null; suffix?: string; good: boolean; invertColor?: boolean;
+function RatioCard({ label, value, suffix, good }: {
+  label: string; value: number | null; suffix?: string; good: boolean;
 }) {
   const color = value === null ? "text-muted-foreground" : good ? "text-terminal-green" : "text-terminal-amber";
   return (
