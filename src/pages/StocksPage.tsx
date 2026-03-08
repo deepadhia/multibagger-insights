@@ -19,6 +19,7 @@ export default function StocksPage() {
   const { toast } = useToast();
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [refreshingFinancials, setRefreshingFinancials] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const handleRefreshAllPrices = async () => {
     if (!stocks?.length) return;
@@ -83,6 +84,26 @@ export default function StocksPage() {
       description: `${success} updated, ${failed} failed out of ${stocks.length} stocks`,
     });
     setRefreshingFinancials(false);
+  };
+
+  const handleBackfillPrices = async () => {
+    if (!stocks?.length) return;
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("refresh-all-prices", {
+        body: { backfill: true },
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["prices"] });
+      queryClient.invalidateQueries({ queryKey: ["all-prices"] });
+      toast({
+        title: "1Y Price Backfill Complete",
+        description: data?.message || "Historical prices loaded",
+      });
+    } catch (e: any) {
+      toast({ title: "Backfill failed", description: e.message, variant: "destructive" });
+    }
+    setBackfilling(false);
   };
 
   // Fetch latest analysis per stock
@@ -150,6 +171,16 @@ export default function StocksPage() {
             >
               {refreshingFinancials ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               {refreshingFinancials ? "Refreshing..." : "Refresh Financials"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBackfillPrices}
+              disabled={backfilling || !stocks?.length}
+              className="font-mono"
+            >
+              {backfilling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {backfilling ? "Backfilling..." : "Backfill 1Y Prices"}
             </Button>
             <AddStockDialog />
           </div>
