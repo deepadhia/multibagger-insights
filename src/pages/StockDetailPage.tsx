@@ -509,6 +509,98 @@ export default function StockDetailPage() {
               </Card>
             )}
 
+            {/* Shareholding Pattern (Quarterly) */}
+            {shareholding && shareholding.length > 0 && (
+              <>
+                <Card className="p-4 bg-card border-border card-glow">
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Shareholding Pattern (%)</h3>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <AreaChart data={shareholding}>
+                      <defs>
+                        <linearGradient id="promoterGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(142 70% 45%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(142 70% 45%)" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="fiiGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(200 80% 55%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(200 80% 55%)" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="diiGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(45 90% 55%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(45 90% 55%)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 16%)" />
+                      <XAxis dataKey="quarter" tick={{ fill: "hsl(215 15% 50%)", fontSize: 9, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={50} />
+                      <YAxis tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={chartTooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 10, fontFamily: "JetBrains Mono" }} />
+                      <Area type="monotone" dataKey="promoters" name="Promoters" stroke="hsl(142 70% 45%)" fill="url(#promoterGrad)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="fiis" name="FIIs" stroke="hsl(200 80% 55%)" fill="url(#fiiGrad)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="diis" name="DIIs" stroke="hsl(45 90% 55%)" fill="url(#diiGrad)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </Card>
+
+                <Card className="p-4 bg-card border-border card-glow overflow-hidden">
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Quarterly Shareholding</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full data-grid">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Quarter</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Promoters</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">FIIs</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">DIIs</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Public</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Others</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...shareholding].reverse().map((sh, idx) => {
+                          const prev = [...shareholding].reverse()[idx + 1];
+                          const pChange = prev && sh.promoters != null && prev.promoters != null ? sh.promoters - prev.promoters : null;
+                          const fChange = prev && sh.fiis != null && prev.fiis != null ? sh.fiis - prev.fiis : null;
+                          const dChange = prev && sh.diis != null && prev.diis != null ? sh.diis - prev.diis : null;
+                          return (
+                            <tr key={sh.id} className="border-b border-border/50 hover:bg-muted/30">
+                              <td className="p-2 font-semibold text-foreground">{sh.quarter}</td>
+                              <td className="p-2 text-right">
+                                <span className="font-mono text-foreground">{sh.promoters != null ? `${sh.promoters}%` : "—"}</span>
+                                {pChange !== null && pChange !== 0 && (
+                                  <span className={`ml-1 text-[10px] font-mono ${pChange > 0 ? "text-terminal-green" : "text-terminal-red"}`}>
+                                    {pChange > 0 ? "↑" : "↓"}{Math.abs(pChange).toFixed(1)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-right">
+                                <span className="font-mono text-foreground">{sh.fiis != null ? `${sh.fiis}%` : "—"}</span>
+                                {fChange !== null && fChange !== 0 && (
+                                  <span className={`ml-1 text-[10px] font-mono ${fChange > 0 ? "text-terminal-green" : "text-terminal-red"}`}>
+                                    {fChange > 0 ? "↑" : "↓"}{Math.abs(fChange).toFixed(1)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-right">
+                                <span className="font-mono text-foreground">{sh.diis != null ? `${sh.diis}%` : "—"}</span>
+                                {dChange !== null && dChange !== 0 && (
+                                  <span className={`ml-1 text-[10px] font-mono ${dChange > 0 ? "text-terminal-green" : "text-terminal-red"}`}>
+                                    {dChange > 0 ? "↑" : "↓"}{Math.abs(dChange).toFixed(1)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-right font-mono text-muted-foreground">{sh.public_holding != null ? `${sh.public_holding}%` : "—"}</td>
+                              <td className="p-2 text-right font-mono text-muted-foreground">{sh.others != null ? `${sh.others}%` : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </>
+            )}
+
             {/* Charts */}
             {yearlyChartData.length > 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
