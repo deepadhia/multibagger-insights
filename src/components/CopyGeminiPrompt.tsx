@@ -80,7 +80,7 @@ Return a SINGLE JSON object. No prose. No markdown backticks.
     "dodged_questions": ["Summarize specific questions management avoided or deflected"],
     "red_flags": ["Concerning inconsistencies, tone shifts, or data points"],
     "metrics": ${JSON.stringify(
-      (stock.metric_keys || ["revenue_growth", "opm", "pat_growth", "order_book"]).reduce(
+      (Array.isArray(stock.metric_keys) ? stock.metric_keys as string[] : ["revenue_growth", "opm", "pat_growth", "order_book"]).reduce(
         (acc: Record<string, string>, key: string) => {
           acc[key] = "Value (Source Quote)";
           return acc;
