@@ -865,6 +865,16 @@ export default function StockDetailPage() {
             )}
           </TabsContent>
 
+          {/* ═══ PROMISES TAB ═══ */}
+          <TabsContent value="promises" className="space-y-4 mt-4">
+            <PromisesTab stockId={id!} />
+          </TabsContent>
+
+          {/* ═══ SNAPSHOTS TAB ═══ */}
+          <TabsContent value="snapshots" className="space-y-4 mt-4">
+            <SnapshotsTab stockId={id!} />
+          </TabsContent>
+
           {/* ═══ PEERS TAB ═══ */}
           <TabsContent value="peers" className="space-y-4 mt-4">
             {peers && peers.length > 0 ? (
