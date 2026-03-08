@@ -85,8 +85,8 @@ Deno.serve(async (req) => {
             exchange: 'NSE',
             remarks: d.BD_REMARKS || d.remarks || null,
           }));
-          const { error } = await supabase.from('bulk_deals').insert(rows);
-          if (error) console.error('Bulk deals insert error:', error);
+          const { error } = await supabase.from('bulk_deals').upsert(rows, { onConflict: 'stock_id,deal_date,client_name,deal_type' });
+          if (error) console.error('Bulk deals upsert error:', error);
           else results.bulk_deals = rows.length;
         }
       } else {
@@ -121,8 +121,8 @@ Deno.serve(async (req) => {
             exchange: 'NSE',
             remarks: null,
           }));
-          const { error } = await supabase.from('bulk_deals').insert(rows);
-          if (error) console.error('Block deals insert error:', error);
+          const { error } = await supabase.from('bulk_deals').upsert(rows, { onConflict: 'stock_id,deal_date,client_name,deal_type' });
+          if (error) console.error('Block deals upsert error:', error);
           else results.block_deals = rows.length;
         }
       } else {
@@ -166,8 +166,8 @@ Deno.serve(async (req) => {
               exchange: 'NSE',
             };
           });
-          const { error } = await supabase.from('insider_trades').insert(rows);
-          if (error) console.error('Insider trades insert error:', error);
+          const { error } = await supabase.from('insider_trades').upsert(rows, { onConflict: 'stock_id,trade_date,person_name,trade_type' });
+          if (error) console.error('Insider trades upsert error:', error);
           else results.insider_trades = rows.length;
         }
       } else {
