@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   BarChart3, TrendingUp, TrendingDown, FileText, Target, Activity,
   ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, Zap, CalendarClock,
-  Shield, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Minus
+  Shield, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Minus, ExternalLink, Package
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
