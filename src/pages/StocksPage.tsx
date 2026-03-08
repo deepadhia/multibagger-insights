@@ -195,6 +195,7 @@ export default function StocksPage() {
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Ticker</th>
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Sector</th>
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Category</th>
+                  <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider">Next Results</th>
                   <th className="text-right p-3 text-muted-foreground text-xs uppercase tracking-wider">Buy Price</th>
                   <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider">Sentiment</th>
                   <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider">Actions</th>
