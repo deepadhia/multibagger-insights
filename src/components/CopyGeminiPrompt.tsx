@@ -53,31 +53,35 @@ export function CopyGeminiPrompt({ stock }: Props) {
       ? `${Math.round((kept.length / (kept.length + broken.length)) * 100)}%`
       : "No resolved promises yet";
 
-    // Build previous quarter context
+    // Build previous quarter context from last snapshot's raw_ai_output or fields
     const prevQuarterContext = (() => {
       const prevSnap = snapshots?.[0];
       if (!prevSnap) return "No previous quarter data available.";
-      const prevMetrics = (prevSnap.metrics && typeof prevSnap.metrics === "object") ? prevSnap.metrics as Record<string, string> : {};
+      // If we have the full raw AI output, inject it for maximum context
+      if (prevSnap.raw_ai_output && typeof prevSnap.raw_ai_output === "object") {
+        return JSON.stringify(prevSnap.raw_ai_output, null, 2);
+      }
+      const prevMetrics = (prevSnap.metrics && typeof prevSnap.metrics === "object") ? prevSnap.metrics as Record<string, unknown> : {};
       const prevFlags = Array.isArray(prevSnap.red_flags) ? prevSnap.red_flags : [];
       const prevDodged = Array.isArray(prevSnap.dodged_questions) ? prevSnap.dodged_questions : [];
-      return `Previous Quarter: ${prevSnap.quarter}
+      return `Quarter: ${prevSnap.quarter}
 Summary: ${prevSnap.summary || "N/A"}
-Key Metrics: ${JSON.stringify(prevMetrics, null, 2)}
+Metrics: ${JSON.stringify(prevMetrics, null, 2)}
 Red Flags: ${prevFlags.length > 0 ? prevFlags.join("; ") : "None"}
 Dodged Questions: ${prevDodged.length > 0 ? prevDodged.join("; ") : "None"}`;
     })();
 
-    // Build dynamic metrics schema
-    const metricsSchema = JSON.stringify(
-      (Array.isArray(stock.metric_keys) ? stock.metric_keys as string[] : ["revenue_growth", "opm", "pat_growth", "order_book"]).reduce(
-        (acc: Record<string, string>, key: string) => {
-          acc[key] = "Value (Source Quote)";
-          return acc;
-        },
-        {} as Record<string, string>
-      ),
-      null,
-      6
+    // Build dynamic metrics schema with { value, evidence } structure
+    const metricKeys = Array.isArray(stock.metric_keys)
+      ? stock.metric_keys as string[]
+      : ["revenue_growth", "opm", "pat_growth", "order_book"];
+
+    const metricsSchema = metricKeys.reduce(
+      (acc: Record<string, { value: string; evidence: string }>, key: string) => {
+        acc[key] = { value: "", evidence: "" };
+        return acc;
+      },
+      {} as Record<string, { value: string; evidence: string }>
     );
 
     const prompt = `You are a ruthless Indian equity research analyst. Your job is to evaluate whether the investment thesis is strengthening or weakening based on earnings calls and results. Ignore macro commentary and focus on operational metrics and commitments.
@@ -89,7 +93,7 @@ ${stock.tracking_directives || "No specific tracking directives set. Perform a g
 ${stock.investment_thesis ? `\nMY INVESTMENT THESIS: ${stock.investment_thesis}` : ""}
 
 ═══════════════════════════════════════
-PREVIOUS QUARTER CONTEXT (for QoQ comparison)
+PREVIOUS QUARTER CONTEXT
 ═══════════════════════════════════════
 ${prevQuarterContext}
 
@@ -104,33 +108,42 @@ Resolved History: ${JSON.stringify(resolvedLedger, null, 2)}
 ═══════════════════════════════════════
 OUTPUT FORMAT (Strict JSON)
 ═══════════════════════════════════════
-Return a SINGLE JSON object. No prose. No markdown backticks.
+Return a SINGLE JSON object exactly matching this schema. No prose. No markdown backticks.
 
 {
-  "thesis_status": {
-    "status": "strengthening | stable | weakening | broken",
-    "reason": "1-2 sentence ruthless justification based on QoQ delta and promises"
-  },
-  "quarterly_snapshot": {
-    "quarter": "Q_FY__",
+  "quarter": "Q_FY__",
+  "snapshot": {
     "summary": "3-5 sentence ruthless summary of the quarter.",
-    "dodged_questions": ["Summarize specific questions management avoided or deflected"],
-    "red_flags": ["Concerning inconsistencies, tone shifts, or QoQ deterioration"],
-    "metrics": ${metricsSchema}
+    "management_tone": "bullish | neutral | cautious",
+    "thesis_status": "strengthening | stable | weakening | broken",
+    "confidence_score": 0-100,
+    "key_changes_vs_last_quarter": [
+      "Crucial operational or narrative shifts compared to the previous quarter context"
+    ]
+  },
+  "metrics": ${JSON.stringify(metricsSchema, null, 4)},
+  "signals": {
+    "bullish": ["Positive demand, margin, or execution indicators"],
+    "warnings": ["Potential headwinds or execution delays"],
+    "bearish": ["Severe deterioration or structural thesis breaks"]
+  },
+  "management_analysis": {
+    "dodged_questions": ["Specific questions management avoided or deflected in Q&A"],
+    "red_flags": ["Concerning inconsistencies or tone shifts"]
   },
   "promise_updates": [
     {
       "id": "UUID from the ledger above",
-      "new_status": "kept | broken | pending",
-      "resolved_in_quarter": "Q_FY__ or null if still pending",
-      "evidence": "Direct quote or data point proving this status"
+      "status": "kept | broken | pending",
+      "resolved_quarter": "Q_FY__ or null",
+      "evidence": "Direct quote proving this status"
     }
   ],
   "new_promises": [
     {
       "promise_text": "New commitment made by management this quarter",
-      "made_in_quarter": "Q_FY__",
-      "target_deadline": "FY__ or Q_FY__ or null"
+      "target_deadline": "FY__ or Q_FY__ or null",
+      "confidence": "high | medium | low"
     }
   ]
 }
@@ -138,15 +151,13 @@ Return a SINGLE JSON object. No prose. No markdown backticks.
 ═══════════════════════════════════════
 INSTRUCTIONS
 ═══════════════════════════════════════
-1. Compare current quarter data against the PREVIOUS QUARTER CONTEXT. Flag deterioration or improvement in the thesis_status and red_flags.
+1. Compare current quarter data against the PREVIOUS QUARTER CONTEXT. Populate the key_changes_vs_last_quarter and adjust the thesis_status accordingly.
 2. Cross-reference EVERY promise ID from the ledger. Update status ruthlessly with evidence.
-3. THE SILENT FAILURE RULE: If a promise's target_deadline has passed in this quarter and management does not confirm completion, you MUST mark the promise as "broken" with evidence "Silent failure — deadline passed with no confirmation".
-4. Since I may provide audio, pay special attention to management's tone during Q&A. Flag any hesitations, deflections, or "corporate speak" when asked about key metrics as Red Flags.
-5. Hunt specifically for the metrics mentioned in the TRACKING DIRECTIVES.
-6. If a metric is not explicitly disclosed in the transcript/results, write "NOT DISCLOSED" — do NOT hallucinate numbers.
-7. For every metric value, include the exact source quote from the transcript in parentheses.
-8. Extract ALL new forward-looking commitments as new_promises.
-9. COMPARE with previous quarter: identify new growth drivers, removed drivers, tone changes, and new risks vs prior quarter.
+3. THE SILENT FAILURE RULE: If a promise's target_deadline has passed in this quarter and management does not confirm completion, you MUST mark the promise status as "broken" with evidence "Silent failure — deadline passed with no confirmation".
+4. Never combine value and evidence in the same field. If a metric is not explicitly disclosed in the transcript or results, set the value to "NOT DISCLOSED" and do not hallucinate numbers.
+5. Provide exact source quotes for every piece of evidence.
+6. Extract ALL new forward-looking commitments as new_promises and assign a confidence score based on management's historical track record and tone.
+7. Pay special attention to management's tone during Q&A. Flag any hesitations, deflections, or "corporate speak" in management_analysis.red_flags.
 
 ---
 [PASTE TRANSCRIPT AND/OR RESULTS BELOW]
@@ -155,7 +166,7 @@ INSTRUCTIONS
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied(true);
-      toast({ title: "V2 Prompt copied", description: `${stock.ticker} — ${pendingLedger.length} pending promises, QoQ context included. Paste into Gemini.` });
+      toast({ title: "V3 Prompt copied", description: `${stock.ticker} — ${pendingLedger.length} pending promises, nested metrics schema. Paste into Gemini.` });
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast({ title: "Copy failed", description: "Could not access clipboard.", variant: "destructive" });
