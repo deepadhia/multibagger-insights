@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, FileText, Upload, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, FileText, Upload, CheckCircle2, AlertTriangle, Edit3 } from "lucide-react";
 
 interface GeminiPayload {
   quarterly_snapshot: {
@@ -36,6 +36,7 @@ export default function TranscriptsPage() {
 
   const [stockId, setStockId] = useState("");
   const [jsonInput, setJsonInput] = useState("");
+  const [quarter, setQuarter] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ snapshots: number; promisesUpdated: number; promisesCreated: number } | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -61,6 +62,10 @@ export default function TranscriptsPage() {
       toast({ title: "Select a stock", variant: "destructive" });
       return;
     }
+    if (!quarter.trim()) {
+      toast({ title: "Enter a quarter (e.g. Q4FY25)", variant: "destructive" });
+      return;
+    }
 
     const payload = parseJson(jsonInput);
     if (!payload) return;
@@ -70,13 +75,14 @@ export default function TranscriptsPage() {
 
     try {
       const snap = payload.quarterly_snapshot;
+      const activeQuarter = quarter.trim();
 
       // 1. Upsert quarterly snapshot
       const { error: snapError } = await supabase
         .from("quarterly_snapshots" as any)
         .upsert({
           stock_id: stockId,
-          quarter: snap.quarter,
+          quarter: activeQuarter,
           summary: snap.summary || null,
           dodged_questions: snap.dodged_questions || [],
           red_flags: snap.red_flags || [],
@@ -94,7 +100,7 @@ export default function TranscriptsPage() {
               .from("management_promises" as any)
               .update({
                 status: update.new_status,
-                resolved_in_quarter: snap.quarter,
+                resolved_in_quarter: activeQuarter,
               })
               .eq("id", update.promise_id);
             if (!error) promisesUpdated++;
@@ -108,7 +114,7 @@ export default function TranscriptsPage() {
         const rows = payload.new_promises.map((p) => ({
           stock_id: stockId,
           promise_text: p.promise_text,
-          made_in_quarter: snap.quarter,
+          made_in_quarter: activeQuarter,
           target_deadline: p.target_deadline || null,
           status: "pending",
         }));
@@ -166,8 +172,19 @@ export default function TranscriptsPage() {
                 <Textarea
                   value={jsonInput}
                   onChange={(e) => {
-                    setJsonInput(e.target.value);
+                    const val = e.target.value;
+                    setJsonInput(val);
                     setParseError(null);
+                    // Auto-detect quarter from JSON
+                    try {
+                      const clean = val.replace(/```json/gi, "").replace(/```/g, "").trim();
+                      const parsed = JSON.parse(clean);
+                      if (parsed?.quarterly_snapshot?.quarter && !quarter) {
+                        setQuarter(parsed.quarterly_snapshot.quarter);
+                      }
+                    } catch {
+                      // ignore parse errors during typing
+                    }
                   }}
                   placeholder={`Paste the Gemini JSON here...\n\n{\n  "quarterly_snapshot": {\n    "quarter": "Q4FY25",\n    "summary": "...",\n    "dodged_questions": [...],\n    "red_flags": [...],\n    "metrics": {...}\n  },\n  "new_promises": [...]\n}`}
                   className="bg-muted border-border font-mono text-sm min-h-[300px]"
@@ -177,6 +194,19 @@ export default function TranscriptsPage() {
                     <AlertTriangle className="h-3 w-3" /> {parseError}
                   </p>
                 )}
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs flex items-center gap-1">
+                  <Edit3 className="h-3 w-3" /> Quarter (auto-detected, editable)
+                </Label>
+                <input
+                  type="text"
+                  value={quarter}
+                  onChange={(e) => setQuarter(e.target.value.toUpperCase())}
+                  placeholder="e.g. Q4FY25"
+                  className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
               </div>
 
               <Button onClick={handleImport} disabled={loading || !jsonInput.trim()} className="w-full font-mono">
