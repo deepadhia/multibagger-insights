@@ -89,19 +89,44 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
       if (cleaned.startsWith("```")) {
         cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
       }
-      // Try to extract JSON object if there's trailing text
+      // Strip leading/trailing non-JSON text
       const firstBrace = cleaned.indexOf("{");
       if (firstBrace > 0) cleaned = cleaned.substring(firstBrace);
-      // Find the matching closing brace
-      let depth = 0, lastBrace = -1;
+      // Find matching closing brace (string-aware)
+      let depth = 0, lastBrace = -1, inString = false, escape = false;
       for (let i = 0; i < cleaned.length; i++) {
-        if (cleaned[i] === "{") depth++;
-        if (cleaned[i] === "}") { depth--; if (depth === 0) { lastBrace = i; break; } }
+        const c = cleaned[i];
+        if (escape) { escape = false; continue; }
+        if (c === "\\") { escape = true; continue; }
+        if (c === '"' && !escape) { inString = !inString; continue; }
+        if (inString) continue;
+        if (c === "{" || c === "[") depth++;
+        if (c === "}" || c === "]") { depth--; if (depth === 0) { lastBrace = i; break; } }
       }
       if (lastBrace > 0 && lastBrace < cleaned.length - 1) {
         cleaned = cleaned.substring(0, lastBrace + 1);
       }
-      const data = JSON.parse(cleaned) as GeminiResponse;
+      
+      // Try parsing; if it fails, attempt to fix unescaped quotes in string values
+      let data: GeminiResponse;
+      try {
+        data = JSON.parse(cleaned) as GeminiResponse;
+      } catch (firstErr) {
+        // Fix unescaped quotes inside JSON string values: ("text") → (\"text\")
+        // Replace inner quotes that follow ( or precede ) inside strings
+        let fixed = cleaned.replace(/\("([^"]*?)"\)/g, '(\\"$1\\")');
+        // Also try removing smart quotes
+        fixed = fixed.replace(/[\u201C\u201D]/g, '\\"').replace(/[\u2018\u2019]/g, "\\'");
+        try {
+          data = JSON.parse(fixed) as GeminiResponse;
+        } catch {
+          // Last resort: try to extract just by relaxed regex for the error position
+          const match = (firstErr as Error).message.match(/position (\d+)/);
+          const pos = match ? parseInt(match[1]) : 0;
+          const context = cleaned.substring(Math.max(0, pos - 40), pos + 40);
+          throw new Error(`JSON parse error near: ...${context}...`);
+        }
+      }
       if (!data.quarterly_snapshot?.quarter && !quarterOverride) {
         throw new Error("Missing quarter. Select one from the dropdown or ensure JSON has quarterly_snapshot.quarter");
       }
