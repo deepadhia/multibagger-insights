@@ -1,73 +1,161 @@
-# Welcome to your Lovable project
+# MBIQ — Portfolio Intelligence Platform
 
-## Project info
+A comprehensive stock portfolio tracker and earnings call analysis tool built with React, Supabase, and AI-powered transcript analysis.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Tech Stack
 
-## How can I edit this code?
+- **Frontend**: React + Vite + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend**: Supabase (Postgres, Edge Functions, RLS)
+- **Charts**: Recharts
+- **State**: TanStack React Query
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## Local Development Setup
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### Prerequisites
 
-Changes made via Lovable will be committed automatically to this repo.
+- [Node.js](https://github.com/nvm-sh/nvm#installing-and-updating) (v18+)
+- [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) (`npm install -g supabase`)
+- [Docker](https://docs.docker.com/get-docker/) (required for local Supabase)
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### 1. Clone & Install
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
 git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
+npm install
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
+### 2. Start Local Supabase
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+This will spin up a local Postgres database and apply all migrations from `supabase/migrations/`:
+
+```sh
+supabase start
+```
+
+After starting, the CLI will output local credentials:
+
+```
+API URL:    http://127.0.0.1:54321
+anon key:   eyJhbGci...
+service_role key: eyJhbGci...
+DB URL:     postgresql://postgres:postgres@127.0.0.1:54322/postgres
+```
+
+### 3. Configure Environment
+
+Create a `.env.local` file in the project root:
+
+```env
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_PUBLISHABLE_KEY=<anon_key_from_supabase_start>
+```
+
+### 4. Configure Edge Function Secrets
+
+Edge functions need secrets to operate. Set them for local development:
+
+```sh
+# Required for edge functions to access the database
+supabase secrets set SUPABASE_URL=http://127.0.0.1:54321
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<service_role_key_from_supabase_start>
+
+# Required for Screener.in financial data scraping
+supabase secrets set SCREENER_SESSION_ID=<your_screener_session_cookie>
+supabase secrets set SCREENER_CSRF_TOKEN=<your_screener_csrf_token>
+
+# Optional: Alpha Vantage for additional financial data
+supabase secrets set ALPHA_VANTAGE_API_KEY=<your_key>
+```
+
+#### How to get Screener.in credentials:
+1. Go to [screener.in](https://www.screener.in/) and log in
+2. Open browser DevTools → Application → Cookies
+3. Copy the values of `sessionid` and `csrftoken`
+
+### 5. Serve Edge Functions Locally
+
+In a separate terminal:
+
+```sh
+supabase functions serve
+```
+
+### 6. Start the Frontend
+
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The app will be available at `http://localhost:5173`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+---
 
-**Use GitHub Codespaces**
+## Project Structure
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```
+├── src/
+│   ├── components/       # React components
+│   ├── hooks/            # Custom React hooks (useStocks, useFinancials, etc.)
+│   ├── integrations/     # Auto-generated Supabase client & types
+│   ├── lib/              # Utilities, signals detection, types
+│   └── pages/            # Route pages (Index, StocksPage, StockDetailPage, etc.)
+├── supabase/
+│   ├── config.toml       # Supabase project config
+│   ├── migrations/       # Database migrations (auto-applied on `supabase start`)
+│   └── functions/        # Edge functions
+│       ├── fetch-price/          # Yahoo Finance price fetcher
+│       ├── fetch-financials/     # Screener.in financial data scraper
+│       ├── fetch-deals/          # Bulk/insider deal fetcher
+│       ├── fetch-sector-indices/ # Nifty sector index tracker
+│       ├── fetch-results-calendar/ # Upcoming results date fetcher
+│       ├── refresh-all-prices/   # Batch price refresh
+│       ├── refresh-all-financials/ # Batch financials refresh
+│       └── analyze-transcript/   # AI transcript analysis
+```
 
-## What technologies are used for this project?
+## Key Features
 
-This project is built with:
+- **Auto-import on stock add**: Price + financials fetched automatically
+- **3Y price backfill**: Historical daily prices from Yahoo Finance
+- **Earnings call analysis**: Paste transcripts → AI extracts signals, promises, thesis drift
+- **Multibagger signal detection**: Automated scoring based on financials, shareholding, management credibility
+- **Thesis tracking**: Track investment thesis drift across quarters
+- **Sector indices**: Nifty sector performance comparison
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Database
 
-## How can I deploy this project?
+All tables have RLS enabled. Migrations in `supabase/migrations/` are applied automatically when you run `supabase start`. Key tables:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Table | Purpose |
+|-------|---------|
+| `stocks` | Portfolio stocks with thesis & tracking config |
+| `prices` | Daily price history |
+| `financial_metrics` | Annual financial data (ROCE, ROE, etc.) |
+| `financial_results` | Quarterly results |
+| `shareholding` | Quarterly shareholding pattern |
+| `peer_comparison` | Peer company metrics |
+| `transcript_analysis` | AI-analyzed earnings call data |
+| `quarterly_snapshots` | V5 quarterly thesis snapshots |
+| `management_promises` | Tracked management commitments |
+| `bulk_deals` / `insider_trades` | Deal activity |
+| `sector_indices` | Nifty sector index prices |
 
-## Can I connect a custom domain to my Lovable project?
+## Useful Commands
 
-Yes, you can!
+```sh
+supabase start          # Start local Supabase (applies migrations)
+supabase stop           # Stop local Supabase
+supabase db reset       # Reset DB and re-apply all migrations
+supabase functions serve # Serve edge functions locally
+npm run dev             # Start frontend dev server
+npm run build           # Production build
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Deployment
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+The app is deployed via [Lovable](https://lovable.dev). Click **Publish** in the editor to deploy.
+
+Edge functions deploy automatically on code changes. Frontend requires clicking **Update** in the publish dialog.
