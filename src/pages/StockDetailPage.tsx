@@ -15,6 +15,7 @@ import { SnapshotsTab } from "@/components/SnapshotsTab";
 import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
 import { ImportGeminiResponse } from "@/components/ImportGeminiResponse";
 import { MasterPromptEditor } from "@/components/MasterPromptEditor";
+import { TranscriptDownloader } from "@/components/TranscriptDownloader";
 import { DealsTab } from "@/components/DealsTab";
 import { ThesisScore } from "@/components/ThesisScore";
 import { ThesisTimeline } from "@/components/ThesisTimeline";
