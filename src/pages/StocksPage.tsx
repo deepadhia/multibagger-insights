@@ -93,7 +93,19 @@ export default function StocksPage() {
             <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Stocks</h1>
             <p className="text-sm text-muted-foreground font-mono mt-1">Track and manage your portfolio</p>
           </div>
-          <AddStockDialog />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshAllPrices}
+              disabled={refreshingPrices || !stocks?.length}
+              className="font-mono"
+            >
+              {refreshingPrices ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {refreshingPrices ? "Refreshing..." : "Refresh All Prices"}
+            </Button>
+            <AddStockDialog />
+          </div>
         </div>
 
         <Card className="bg-card border-border overflow-hidden">
