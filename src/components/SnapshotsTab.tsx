@@ -9,7 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, MessageSquare, FileText, Code, Save, Loader2,
-  ChevronDown, ChevronRight, BarChart3, TrendingUp, TrendingDown, Minus, ArrowRightLeft
+  ChevronDown, ChevronRight, BarChart3, TrendingUp, TrendingDown, Minus, ArrowRightLeft, Trash2
 } from "lucide-react";
 import {
   Collapsible,
