@@ -16,6 +16,7 @@ import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
 import { ImportGeminiResponse } from "@/components/ImportGeminiResponse";
 import { MasterPromptEditor } from "@/components/MasterPromptEditor";
 import { DealsTab } from "@/components/DealsTab";
+import { ThesisScore } from "@/components/ThesisScore";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
