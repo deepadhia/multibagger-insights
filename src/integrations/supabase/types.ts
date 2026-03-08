@@ -161,6 +161,65 @@ export type Database = {
           },
         ]
       }
+      peer_comparison: {
+        Row: {
+          cmp: number | null
+          created_at: string
+          div_yield: number | null
+          id: string
+          market_cap: number | null
+          np_qtr: number | null
+          pe: number | null
+          peer_name: string
+          peer_slug: string | null
+          qtr_profit_var: number | null
+          qtr_sales_var: number | null
+          roce: number | null
+          sales_qtr: number | null
+          stock_id: string
+        }
+        Insert: {
+          cmp?: number | null
+          created_at?: string
+          div_yield?: number | null
+          id?: string
+          market_cap?: number | null
+          np_qtr?: number | null
+          pe?: number | null
+          peer_name: string
+          peer_slug?: string | null
+          qtr_profit_var?: number | null
+          qtr_sales_var?: number | null
+          roce?: number | null
+          sales_qtr?: number | null
+          stock_id: string
+        }
+        Update: {
+          cmp?: number | null
+          created_at?: string
+          div_yield?: number | null
+          id?: string
+          market_cap?: number | null
+          np_qtr?: number | null
+          pe?: number | null
+          peer_name?: string
+          peer_slug?: string | null
+          qtr_profit_var?: number | null
+          qtr_sales_var?: number | null
+          roce?: number | null
+          sales_qtr?: number | null
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "peer_comparison_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prices: {
         Row: {
           change_percent: number | null
