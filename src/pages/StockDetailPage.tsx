@@ -290,9 +290,6 @@ export default function StockDetailPage() {
             <TabsTrigger value="snapshots" className="font-mono text-xs gap-1.5">
               <FileText className="h-3 w-3" /> Snapshots
             </TabsTrigger>
-            <TabsTrigger value="peers" className="font-mono text-xs gap-1.5">
-              <Users className="h-3 w-3" /> Peers
-            </TabsTrigger>
             <TabsTrigger value="deals" className="font-mono text-xs gap-1.5">
               <Briefcase className="h-3 w-3" /> Deals
             </TabsTrigger>
