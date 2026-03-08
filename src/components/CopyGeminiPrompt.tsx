@@ -12,6 +12,7 @@ interface Props {
     tracking_directives?: string | null;
     investment_thesis?: string | null;
     sector?: string | null;
+    metric_keys?: unknown;
   };
 }
 
@@ -78,16 +79,17 @@ Return a SINGLE JSON object. No prose. No markdown backticks.
     "summary": "3-5 sentence ruthless summary of the quarter.",
     "dodged_questions": ["Summarize specific questions management avoided or deflected"],
     "red_flags": ["Concerning inconsistencies, tone shifts, or data points"],
-    "metrics": {
-      "revenue_growth": "Value (Source Quote)",
-      "opm": "Value (Source Quote)",
-      "pat_growth": "Value (Source Quote)",
-      "vap_ebitda_margin": "Value (Source Quote)",
-      "vap_revenue_share": "Value (Source Quote)",
-      "type4_cylinder_status": "Value (Source Quote)",
-      "net_debt": "Value (Source Quote)",
-      "order_book": "Value (Source Quote)"
-    }
+    "metrics": ${JSON.stringify(
+      (Array.isArray(stock.metric_keys) ? stock.metric_keys as string[] : ["revenue_growth", "opm", "pat_growth", "order_book"]).reduce(
+        (acc: Record<string, string>, key: string) => {
+          acc[key] = "Value (Source Quote)";
+          return acc;
+        },
+        {} as Record<string, string>
+      ),
+      null,
+      6
+    )}
   },
   "promise_updates": [
     {
