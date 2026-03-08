@@ -428,6 +428,7 @@ export type Database = {
           screener_slug: string | null
           sector: string | null
           ticker: string
+          tracking_directives: string | null
         }
         Insert: {
           buy_price?: number | null
@@ -439,6 +440,7 @@ export type Database = {
           screener_slug?: string | null
           sector?: string | null
           ticker: string
+          tracking_directives?: string | null
         }
         Update: {
           buy_price?: number | null
@@ -450,6 +452,7 @@ export type Database = {
           screener_slug?: string | null
           sector?: string | null
           ticker?: string
+          tracking_directives?: string | null
         }
         Relationships: []
       }

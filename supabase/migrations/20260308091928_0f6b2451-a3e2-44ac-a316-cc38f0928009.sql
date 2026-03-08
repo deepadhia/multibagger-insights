@@ -1,0 +1,1 @@
+ALTER TABLE public.stocks ADD COLUMN IF NOT EXISTS tracking_directives text;
