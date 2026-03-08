@@ -64,6 +64,7 @@ async function processAndStore(html: string, stock_id: string, corsHeaders: Reco
   console.log("Parsed ratios:", JSON.stringify(metrics.ratios));
   console.log("Parsed yearly count:", metrics.yearly.length);
   console.log("Parsed quarterly count:", metrics.quarterly.length);
+  console.log("Parsed shareholding count:", metrics.shareholding.length);
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -106,11 +107,29 @@ async function processAndStore(html: string, stock_id: string, corsHeaders: Reco
     if (error) console.error("Upsert quarterly error:", error);
   }
 
+  // Upsert shareholding quarterly data
+  for (const sh of metrics.shareholding) {
+    const { error } = await supabase.from("shareholding").upsert(
+      {
+        stock_id,
+        quarter: sh.quarter,
+        promoters: sh.promoters,
+        fiis: sh.fiis,
+        diis: sh.diis,
+        public_holding: sh.public_holding,
+        others: sh.others,
+      },
+      { onConflict: "stock_id,quarter", ignoreDuplicates: false }
+    );
+    if (error) console.error("Upsert shareholding error:", error);
+  }
+
   return new Response(JSON.stringify({
     success: true,
     ratios: metrics.ratios,
     yearly: metrics.yearly,
     quarterly: metrics.quarterly,
+    shareholding: metrics.shareholding,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
