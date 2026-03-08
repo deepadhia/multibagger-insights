@@ -146,6 +146,7 @@ export default function StockDetailPage() {
 
   // Multibagger signal detection
   const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || [], shareholding || [], promises || [], snapshots || []);
+  const thesisStatus = getThesisStatus(signals, calculateThesisScore(signals));
 
   // Chart data
   const sentimentData = analyses?.map(a => ({
