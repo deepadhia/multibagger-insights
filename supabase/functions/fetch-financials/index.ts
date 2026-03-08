@@ -124,12 +124,35 @@ async function processAndStore(html: string, stock_id: string, corsHeaders: Reco
     if (error) console.error("Upsert shareholding error:", error);
   }
 
+  // Delete old peers and insert fresh ones
+  if (metrics.peers.length > 0) {
+    await supabase.from("peer_comparison").delete().eq("stock_id", stock_id);
+    for (const peer of metrics.peers) {
+      const { error } = await supabase.from("peer_comparison").insert({
+        stock_id,
+        peer_name: peer.peer_name,
+        peer_slug: peer.peer_slug,
+        cmp: peer.cmp,
+        pe: peer.pe,
+        market_cap: peer.market_cap,
+        div_yield: peer.div_yield,
+        np_qtr: peer.np_qtr,
+        qtr_profit_var: peer.qtr_profit_var,
+        sales_qtr: peer.sales_qtr,
+        qtr_sales_var: peer.qtr_sales_var,
+        roce: peer.roce,
+      });
+      if (error) console.error("Insert peer error:", error);
+    }
+  }
+
   return new Response(JSON.stringify({
     success: true,
     ratios: metrics.ratios,
     yearly: metrics.yearly,
     quarterly: metrics.quarterly,
     shareholding: metrics.shareholding,
+    peers: metrics.peers,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
