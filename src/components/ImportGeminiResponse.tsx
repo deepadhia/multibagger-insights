@@ -89,6 +89,18 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
       if (cleaned.startsWith("```")) {
         cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
       }
+      // Try to extract JSON object if there's trailing text
+      const firstBrace = cleaned.indexOf("{");
+      if (firstBrace > 0) cleaned = cleaned.substring(firstBrace);
+      // Find the matching closing brace
+      let depth = 0, lastBrace = -1;
+      for (let i = 0; i < cleaned.length; i++) {
+        if (cleaned[i] === "{") depth++;
+        if (cleaned[i] === "}") { depth--; if (depth === 0) { lastBrace = i; break; } }
+      }
+      if (lastBrace > 0 && lastBrace < cleaned.length - 1) {
+        cleaned = cleaned.substring(0, lastBrace + 1);
+      }
       const data = JSON.parse(cleaned) as GeminiResponse;
       if (!data.quarterly_snapshot?.quarter && !quarterOverride) {
         throw new Error("Missing quarter. Select one from the dropdown or ensure JSON has quarterly_snapshot.quarter");
