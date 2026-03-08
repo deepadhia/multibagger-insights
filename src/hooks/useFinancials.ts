@@ -50,6 +50,22 @@ export function useStockPrices(stockId: string) {
   });
 }
 
+export function usePeerComparison(stockId: string) {
+  return useQuery({
+    queryKey: ["peers", stockId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("peer_comparison")
+        .select("*")
+        .eq("stock_id", stockId)
+        .order("market_cap", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!stockId,
+  });
+}
+
 export function useShareholding(stockId: string) {
   return useQuery({
     queryKey: ["shareholding", stockId],

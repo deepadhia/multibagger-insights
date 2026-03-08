@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStock, useStockAnalysis, useStockCommitments } from "@/hooks/useStocks";
-import { useFinancialMetrics, useFinancialResults, useStockPrices, useShareholding } from "@/hooks/useFinancials";
+import { useFinancialMetrics, useFinancialResults, useStockPrices, useShareholding, usePeerComparison } from "@/hooks/useFinancials";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, Loader2, DollarSign, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Target, AlertTriangle, Zap, Quote,
-  BarChart3, Activity, Shield, FileText,
+  BarChart3, Activity, Shield, FileText, Users,
 } from "lucide-react";
 
 const chartTooltipStyle = {
@@ -40,6 +40,7 @@ export default function StockDetailPage() {
   const { data: quarterlyResults } = useFinancialResults(id!);
   const { data: prices } = useStockPrices(id!);
   const { data: shareholding } = useShareholding(id!);
+  const { data: peers } = usePeerComparison(id!);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
@@ -60,6 +61,7 @@ export default function StockDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
       queryClient.invalidateQueries({ queryKey: ["financial-results", id] });
       queryClient.invalidateQueries({ queryKey: ["shareholding", id] });
+      queryClient.invalidateQueries({ queryKey: ["peers", id] });
       toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -282,6 +284,9 @@ export default function StockDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="commitments" className="font-mono text-xs gap-1.5">
               <Shield className="h-3 w-3" /> Commitments
+            </TabsTrigger>
+            <TabsTrigger value="peers" className="font-mono text-xs gap-1.5">
+              <Users className="h-3 w-3" /> Peers
             </TabsTrigger>
           </TabsList>
 
@@ -857,6 +862,107 @@ export default function StockDetailPage() {
               </>
             ) : (
               <EmptyState text="No commitments tracked yet. Analyze a transcript to extract management commitments." />
+            )}
+          </TabsContent>
+
+          {/* ═══ PEERS TAB ═══ */}
+          <TabsContent value="peers" className="space-y-4 mt-4">
+            {peers && peers.length > 0 ? (
+              <>
+                <Card className="p-4 bg-card border-border card-glow overflow-hidden">
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Peer Comparison</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full data-grid">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Company</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">CMP (₹)</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">P/E</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">MCap (Cr)</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Div Yld %</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">NP Qtr (Cr)</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Qtr Prof Var %</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Sales Qtr (Cr)</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Qtr Sales Var %</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">ROCE %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {peers.map((p) => {
+                          const isCurrentStock = p.peer_name === stock?.company_name || 
+                            p.peer_slug?.toLowerCase() === stock?.ticker?.toLowerCase() ||
+                            p.peer_slug?.toLowerCase() === stock?.screener_slug?.toLowerCase();
+                          return (
+                            <tr key={p.id} className={`border-b border-border/50 hover:bg-muted/30 ${isCurrentStock ? "bg-primary/5 border-primary/20" : ""}`}>
+                              <td className="p-2 font-semibold text-foreground text-xs">
+                                {p.peer_name}
+                                {isCurrentStock && <Badge variant="outline" className="ml-2 text-[8px] font-mono">YOU</Badge>}
+                              </td>
+                              <td className="p-2 text-right font-mono text-foreground text-xs">{p.cmp != null ? `₹${Number(p.cmp).toLocaleString()}` : "—"}</td>
+                              <td className="p-2 text-right"><ColoredValue value={p.pe} goodBelow={25} /></td>
+                              <td className="p-2 text-right font-mono text-foreground text-xs">{p.market_cap != null ? Number(p.market_cap).toLocaleString() : "—"}</td>
+                              <td className="p-2 text-right font-mono text-muted-foreground text-xs">{p.div_yield != null ? `${p.div_yield}%` : "—"}</td>
+                              <td className="p-2 text-right font-mono text-foreground text-xs">{p.np_qtr != null ? Number(p.np_qtr).toLocaleString() : "—"}</td>
+                              <td className="p-2 text-right"><ColoredValue value={p.qtr_profit_var} suffix="%" goodAbove={0} /></td>
+                              <td className="p-2 text-right font-mono text-foreground text-xs">{p.sales_qtr != null ? Number(p.sales_qtr).toLocaleString() : "—"}</td>
+                              <td className="p-2 text-right"><ColoredValue value={p.qtr_sales_var} suffix="%" goodAbove={0} /></td>
+                              <td className="p-2 text-right"><ColoredValue value={p.roce} suffix="%" goodAbove={15} /></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Peer Insights */}
+                {(() => {
+                  const currentPeer = peers.find(p => 
+                    p.peer_slug?.toLowerCase() === stock?.ticker?.toLowerCase() ||
+                    p.peer_slug?.toLowerCase() === stock?.screener_slug?.toLowerCase()
+                  );
+                  const otherPeers = peers.filter(p => p !== currentPeer && p.roce != null);
+                  if (!currentPeer || otherPeers.length === 0) return null;
+                  
+                  const avgPeerRoce = otherPeers.reduce((s, p) => s + (p.roce || 0), 0) / otherPeers.length;
+                  const avgPeerPE = otherPeers.filter(p => p.pe).reduce((s, p) => s + (p.pe || 0), 0) / otherPeers.filter(p => p.pe).length;
+                  
+                  const insights: { label: string; type: "bullish" | "warning" | "bearish" }[] = [];
+                  if (currentPeer.roce && currentPeer.roce > avgPeerRoce) {
+                    insights.push({ label: `ROCE above peer avg (${currentPeer.roce}% vs ${avgPeerRoce.toFixed(1)}%)`, type: "bullish" });
+                  }
+                  if (currentPeer.pe && avgPeerPE && currentPeer.pe < avgPeerPE * 0.8) {
+                    insights.push({ label: `Undervalued vs peers (P/E ${currentPeer.pe} vs avg ${avgPeerPE.toFixed(1)})`, type: "bullish" });
+                  } else if (currentPeer.pe && avgPeerPE && currentPeer.pe > avgPeerPE * 1.5) {
+                    insights.push({ label: `Premium valuation vs peers (P/E ${currentPeer.pe} vs avg ${avgPeerPE.toFixed(1)})`, type: "warning" });
+                  }
+                  if (currentPeer.qtr_profit_var && currentPeer.qtr_profit_var > 20) {
+                    insights.push({ label: `Strong qtr profit growth ${currentPeer.qtr_profit_var}%`, type: "bullish" });
+                  }
+                  
+                  if (insights.length === 0) return null;
+                  return (
+                    <Card className="p-4 bg-card border-border card-glow">
+                      <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                        <Zap className="h-3 w-3 text-terminal-cyan" /> Peer Insights
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {insights.map((s, i) => (
+                          <Badge key={i} variant="outline" className={`font-mono text-[10px] ${
+                            s.type === "bullish" ? "text-terminal-green border-terminal-green/30 bg-terminal-green/10" :
+                            s.type === "warning" ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10" :
+                            "text-terminal-red border-terminal-red/30 bg-terminal-red/10"
+                          }`}>
+                            {s.type === "bullish" ? "✓" : "⚠"} {s.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </Card>
+                  );
+                })()}
+              </>
+            ) : (
+              <EmptyState text="No peer data. Click 'Financials' to fetch peer comparison from Screener." />
             )}
           </TabsContent>
         </Tabs>
