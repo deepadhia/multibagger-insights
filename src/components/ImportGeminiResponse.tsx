@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -34,36 +35,80 @@ interface GeminiResponse {
   }[];
 }
 
+function generateQuarterOptions(): string[] {
+  const quarters: string[] = [];
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-indexed
+  const currentYear = now.getFullYear();
+
+  // Determine current FY quarter
+  // Indian FY: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar
+  // FY year = if month >= Apr (3), year+1, else year
+  const getFY = (month: number, year: number) => month >= 3 ? year + 1 : year;
+  const getQ = (month: number) => {
+    if (month >= 3 && month <= 5) return 1;
+    if (month >= 6 && month <= 8) return 2;
+    if (month >= 9 && month <= 11) return 3;
+    return 4; // 0, 1, 2
+  };
+
+  // Generate quarters: 4 past + current + 2 future = ~7 quarters
+  const startMonth = currentMonth;
+  const startYear = currentYear;
+
+  // Go back 12 months (4 quarters) and forward 6 months (2 quarters)
+  for (let offset = -4; offset <= 2; offset++) {
+    let m = startMonth + offset * 3;
+    let y = startYear;
+    while (m < 0) { m += 12; y--; }
+    while (m >= 12) { m -= 12; y++; }
+    const q = getQ(m);
+    const fy = getFY(m, y);
+    quarters.push(`Q${q}_FY${String(fy).slice(-2)}`);
+  }
+
+  // Deduplicate and return
+  return [...new Set(quarters)];
+}
+
 export function ImportGeminiResponse({ stockId, ticker }: Props) {
   const [open, setOpen] = useState(false);
   const [rawJson, setRawJson] = useState("");
   const [parsed, setParsed] = useState<GeminiResponse | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [quarterOverride, setQuarterOverride] = useState<string>("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const quarterOptions = useMemo(() => generateQuarterOptions(), []);
+
   const handleParse = () => {
     try {
-      // Strip markdown code fences if present
       let cleaned = rawJson.trim();
       if (cleaned.startsWith("```")) {
         cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
       }
       const data = JSON.parse(cleaned) as GeminiResponse;
-      if (!data.quarterly_snapshot?.quarter) {
-        throw new Error("Missing quarterly_snapshot.quarter");
+      if (!data.quarterly_snapshot?.quarter && !quarterOverride) {
+        throw new Error("Missing quarter. Select one from the dropdown or ensure JSON has quarterly_snapshot.quarter");
       }
       setParsed(data);
       setParseError(null);
+      // Auto-set quarter override from JSON if not manually set
+      if (!quarterOverride && data.quarterly_snapshot?.quarter) {
+        setQuarterOverride(data.quarterly_snapshot.quarter);
+      }
     } catch (e: any) {
       setParsed(null);
       setParseError(e.message);
     }
   };
 
+  const effectiveQuarter = quarterOverride || parsed?.quarterly_snapshot?.quarter || "";
+
   const handleCommit = async () => {
-    if (!parsed) return;
+    if (!parsed || !effectiveQuarter) return;
     setCommitting(true);
 
     try {
@@ -74,7 +119,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         .from("quarterly_snapshots")
         .upsert({
           stock_id: stockId,
-          quarter: snap.quarter,
+          quarter: effectiveQuarter,
           summary: snap.summary,
           dodged_questions: snap.dodged_questions || [],
           red_flags: snap.red_flags || [],
@@ -93,7 +138,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
             .from("management_promises")
             .update({
               status: pu.new_status,
-              resolved_in_quarter: pu.resolved_in_quarter || snap.quarter,
+              resolved_in_quarter: pu.resolved_in_quarter || effectiveQuarter,
             })
             .eq("id", pu.id);
           if (!error) updatedCount++;
@@ -106,7 +151,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         const rows = parsed.new_promises.map(np => ({
           stock_id: stockId,
           promise_text: np.promise_text,
-          made_in_quarter: np.made_in_quarter,
+          made_in_quarter: np.made_in_quarter || effectiveQuarter,
           target_deadline: np.target_deadline || null,
           status: "pending",
         }));
@@ -114,18 +159,18 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         if (!error) insertedCount = rows.length;
       }
 
-      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
       queryClient.invalidateQueries({ queryKey: ["management-promises", stockId] });
 
       toast({
         title: "Committed to database",
-        description: `Snapshot: ${snap.quarter} | ${updatedCount} promises resolved | ${insertedCount} new promises added`,
+        description: `Snapshot: ${effectiveQuarter} | ${updatedCount} promises resolved | ${insertedCount} new promises added`,
       });
 
       setOpen(false);
       setRawJson("");
       setParsed(null);
+      setQuarterOverride("");
     } catch (err: any) {
       toast({ title: "Commit failed", description: err.message, variant: "destructive" });
     } finally {
@@ -145,6 +190,21 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         <DialogHeader>
           <DialogTitle className="font-mono text-sm">Import Gemini Response — {ticker}</DialogTitle>
         </DialogHeader>
+
+        {/* Quarter selector */}
+        <div className="space-y-1">
+          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Quarter (override or auto-detect from JSON)</label>
+          <Select value={quarterOverride} onValueChange={setQuarterOverride}>
+            <SelectTrigger className="font-mono text-xs">
+              <SelectValue placeholder="Auto-detect from JSON" />
+            </SelectTrigger>
+            <SelectContent>
+              {quarterOptions.map(q => (
+                <SelectItem key={q} value={q} className="font-mono text-xs">{q}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <Textarea
           placeholder="Paste Gemini JSON response here..."
@@ -175,7 +235,12 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
             <div className="space-y-2 font-mono text-xs">
               <div>
                 <span className="text-muted-foreground">Quarter:</span>{" "}
-                <Badge variant="outline" className="text-[10px]">{parsed.quarterly_snapshot.quarter}</Badge>
+                <Badge variant="outline" className="text-[10px]">{effectiveQuarter}</Badge>
+                {quarterOverride && parsed.quarterly_snapshot.quarter && quarterOverride !== parsed.quarterly_snapshot.quarter && (
+                  <span className="text-terminal-amber ml-2 text-[10px]">
+                    (overriding JSON's "{parsed.quarterly_snapshot.quarter}")
+                  </span>
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">Summary:</span>{" "}
@@ -200,7 +265,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
               </div>
             </div>
 
-            <Button onClick={handleCommit} disabled={committing} className="w-full font-mono text-xs" size="sm">
+            <Button onClick={handleCommit} disabled={committing || !effectiveQuarter} className="w-full font-mono text-xs" size="sm">
               {committing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Upload className="h-3 w-3 mr-1" />}
               Commit to Database
             </Button>

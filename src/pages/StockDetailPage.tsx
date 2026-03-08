@@ -190,7 +190,22 @@ export default function StockDetailPage() {
                   <Badge variant="secondary" className="font-mono text-[10px]">{stock.sector}</Badge>
                 )}
               </div>
-              <p className="text-foreground text-sm mt-0.5">{stock.company_name}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-foreground text-sm">{stock.company_name}</p>
+                {stock.next_results_date && (
+                  <Badge
+                    variant="outline"
+                    className={`font-mono text-[10px] ${
+                      new Date(stock.next_results_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                        ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10 animate-pulse"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    📅 Results: {new Date(stock.next_results_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    {new Date(stock.next_results_date) <= new Date() && " (Due!)"}
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
 
@@ -253,8 +268,8 @@ export default function StockDetailPage() {
           </Card>
         )}
 
-        {/* ── THESIS + BUY PRICE ── */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+        {/* ── THESIS + BUY PRICE + RESULTS DATE ── */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4">
           <InvestmentThesisEditor stockId={stock.id} thesis={stock.investment_thesis} />
           {stock.buy_price && (
             <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
@@ -267,6 +282,29 @@ export default function StockDetailPage() {
               )}
             </Card>
           )}
+          <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[140px]">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Next Results</p>
+            <input
+              type="date"
+              className="bg-transparent border border-border rounded px-2 py-1 font-mono text-xs text-foreground w-[130px] text-center"
+              value={(stock as any).next_results_date || ""}
+              onChange={async (e) => {
+                const val = e.target.value || null;
+                await supabase.from("stocks").update({ next_results_date: val } as any).eq("id", stock.id);
+                queryClient.invalidateQueries({ queryKey: ["stock", id] });
+                queryClient.invalidateQueries({ queryKey: ["stocks"] });
+              }}
+            />
+            {(stock as any).next_results_date && (
+              <p className={`font-mono text-[10px] mt-1 ${
+                new Date((stock as any).next_results_date) <= new Date() ? "text-terminal-red" :
+                new Date((stock as any).next_results_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) ? "text-terminal-amber" :
+                "text-muted-foreground"
+              }`}>
+                {Math.ceil((new Date((stock as any).next_results_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days
+              </p>
+            )}
+          </Card>
         </div>
 
         {/* ── MAIN TABBED CONTENT ── */}
