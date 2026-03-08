@@ -9,7 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, MessageSquare, FileText, Code, Save, Loader2,
-  ChevronDown, ChevronRight, BarChart3, TrendingUp
+  ChevronDown, ChevronRight, BarChart3, TrendingUp, TrendingDown, Minus, ArrowRightLeft
 } from "lucide-react";
 import {
   Collapsible,
@@ -87,8 +87,73 @@ export function SnapshotsTab({ stockId }: Props) {
     );
   }
 
+  // Build QoQ comparison data
+  const qoqData = snapshots.length >= 2 ? buildQoQComparison(snapshots) : null;
+
   return (
     <div className="space-y-3">
+      {/* ═══ QoQ Comparison Table ═══ */}
+      {qoqData && qoqData.metricKeys.length > 0 && (
+        <Card className="bg-card border-border overflow-hidden">
+          <div className="p-4 border-b border-border/50">
+            <h3 className="font-mono text-xs font-semibold text-foreground flex items-center gap-2">
+              <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+              Quarter-over-Quarter Comparison
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="text-left p-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground w-[160px]">
+                    Metric
+                  </th>
+                  {qoqData.quarters.map((q) => (
+                    <th key={q} className="text-center p-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground min-w-[140px]">
+                      {q}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {qoqData.metricKeys.map((key) => (
+                  <tr key={key} className="border-b border-border/30 hover:bg-muted/20">
+                    <td className="p-3 font-mono text-xs text-foreground font-medium capitalize">
+                      {key.replace(/_/g, " ")}
+                    </td>
+                    {qoqData.quarters.map((q, qi) => {
+                      const val = qoqData.values[q]?.[key];
+                      const prevQ = qi < qoqData.quarters.length - 1 ? qoqData.quarters[qi + 1] : null;
+                      const prevVal = prevQ ? qoqData.values[prevQ]?.[key] : null;
+                      const displayVal = val ? extractValue(val) : "—";
+                      const trend = val && prevVal ? getTrend(val, prevVal) : null;
+
+                      return (
+                        <td key={q} className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="font-mono text-xs text-foreground">{displayVal}</span>
+                            {trend && (
+                              <span className={`flex-shrink-0 ${
+                                trend === "up" ? "text-terminal-green" :
+                                trend === "down" ? "text-terminal-red" :
+                                "text-muted-foreground"
+                              }`}>
+                                {trend === "up" && <TrendingUp className="h-3 w-3" />}
+                                {trend === "down" && <TrendingDown className="h-3 w-3" />}
+                                {trend === "flat" && <Minus className="h-3 w-3" />}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
       {snapshots.map((snap) => {
         const dodged = (Array.isArray(snap.dodged_questions) ? snap.dodged_questions : []) as string[];
         const flags = (Array.isArray(snap.red_flags) ? snap.red_flags : []) as string[];
@@ -278,4 +343,48 @@ export function SnapshotsTab({ stockId }: Props) {
       })}
     </div>
   );
+}
+
+// ═══ Helper functions for QoQ comparison ═══
+
+function extractValue(val: string): string {
+  const s = String(val);
+  const parenIdx = s.indexOf("(");
+  return parenIdx > 0 ? s.slice(0, parenIdx).trim() : s;
+}
+
+function extractNumber(val: string): number | null {
+  const clean = extractValue(val);
+  // Try to extract a number from strings like "11% YoY", "₹266 Cr", "30%", "15%"
+  const match = clean.match(/-?[\d,.]+/);
+  if (!match) return null;
+  return parseFloat(match[0].replace(/,/g, ""));
+}
+
+function getTrend(current: string, previous: string): "up" | "down" | "flat" | null {
+  const curr = extractNumber(current);
+  const prev = extractNumber(previous);
+  if (curr === null || prev === null) return null;
+  if (curr > prev) return "up";
+  if (curr < prev) return "down";
+  return "flat";
+}
+
+function buildQoQComparison(snapshots: any[]) {
+  // snapshots are ordered by created_at DESC, so newest first
+  const quarters = snapshots.map(s => s.quarter);
+  const values: Record<string, Record<string, string>> = {};
+  const allKeys = new Set<string>();
+
+  for (const snap of snapshots) {
+    const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, string>;
+    values[snap.quarter] = metrics;
+    Object.keys(metrics).forEach(k => allKeys.add(k));
+  }
+
+  return {
+    quarters,
+    metricKeys: Array.from(allKeys),
+    values,
+  };
 }
