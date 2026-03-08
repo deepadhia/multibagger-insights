@@ -110,6 +110,20 @@ Return a SINGLE JSON object. No prose. No markdown backticks.
 }
 
 ═══════════════════════════════════════
+PREVIOUS QUARTER CONTEXT (for QoQ comparison)
+═══════════════════════════════════════
+${(() => {
+  const prevSnap = snapshots?.[0];
+  if (!prevSnap) return "No previous quarter data available.";
+  const prevMetrics = (prevSnap.metrics && typeof prevSnap.metrics === "object") ? prevSnap.metrics as Record<string, string> : {};
+  const prevFlags = Array.isArray(prevSnap.red_flags) ? prevSnap.red_flags : [];
+  return `Previous Quarter: ${prevSnap.quarter}
+Summary: ${prevSnap.summary || "N/A"}
+Key Metrics: ${JSON.stringify(prevMetrics, null, 2)}
+Red Flags: ${prevFlags.length > 0 ? prevFlags.join("; ") : "None"}`;
+})()}
+
+═══════════════════════════════════════
 INSTRUCTIONS
 ═══════════════════════════════════════
 1. Cross-reference EVERY promise ID from the ledger. Update status ruthlessly with evidence.
@@ -118,6 +132,7 @@ INSTRUCTIONS
 4. If a metric is not disclosed in the transcript/results, write "NOT DISCLOSED" — do NOT hallucinate numbers.
 5. For every metric value, include the exact source quote from the transcript in parentheses.
 6. Extract ALL new forward-looking commitments as new_promises.
+7. COMPARE with previous quarter: identify new growth drivers, removed drivers, tone changes, and new risks vs prior quarter.
 
 ---
 [PASTE TRANSCRIPT AND/OR RESULTS BELOW]

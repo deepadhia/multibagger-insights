@@ -924,6 +924,11 @@ export default function StockDetailPage() {
           <TabsContent value="deals" className="space-y-4 mt-4">
             <DealsTab stockId={stock.id} ticker={stock.ticker} />
           </TabsContent>
+
+          {/* ═══ TIMELINE TAB ═══ */}
+          <TabsContent value="timeline" className="space-y-4 mt-4">
+            <ThesisTimeline snapshots={snapshots || []} promises={promises || []} />
+          </TabsContent>
         </Tabs>
       </div>
     </DashboardLayout>
