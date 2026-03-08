@@ -39,6 +39,7 @@ export default function StockDetailPage() {
   const { data: financials } = useFinancialMetrics(id!);
   const { data: quarterlyResults } = useFinancialResults(id!);
   const { data: prices } = useStockPrices(id!);
+  const { data: shareholding } = useShareholding(id!);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
