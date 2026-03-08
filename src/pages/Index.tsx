@@ -112,30 +112,60 @@ const Index = () => {
     }).sort((a, b) => (b.return1m ?? -999) - (a.return1m ?? -999));
   }, [stocks, allPrices]);
 
-  // Sector performance
-  const sectorPerformance = useMemo(() => {
-    if (!stockReturns.length) return [];
+  // Nifty sector index performance from stored data
+  const niftySectorPerformance = useMemo(() => {
+    if (!sectorIndicesData || sectorIndicesData.length === 0) return [];
 
-    const sectorMap: Record<string, { returns1m: number[]; returns3m: number[]; returns1y: number[] }> = {};
+    const now = new Date();
+    const oneMonthAgo = new Date(now); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    const threeMonthsAgo = new Date(now); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const oneYearAgo = new Date(now); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    for (const sr of stockReturns) {
-      const sector = sr.stock.sector || "Unknown";
-      if (!sectorMap[sector]) sectorMap[sector] = { returns1m: [], returns3m: [], returns1y: [] };
-      if (sr.return1m !== null) sectorMap[sector].returns1m.push(sr.return1m);
-      if (sr.return3m !== null) sectorMap[sector].returns3m.push(sr.return3m);
-      if (sr.return1y !== null) sectorMap[sector].returns1y.push(sr.return1y);
+    // Group by index
+    const byIndex: Record<string, Array<{ date: string; price: number; index_name: string; sector: string }>> = {};
+    for (const row of sectorIndicesData) {
+      if (!byIndex[row.index_symbol]) byIndex[row.index_symbol] = [];
+      byIndex[row.index_symbol].push({ date: row.date, price: Number(row.price), index_name: row.index_name, sector: row.sector });
     }
 
-    return Object.entries(sectorMap)
-      .map(([sector, data]) => ({
-        sector,
-        avg1m: data.returns1m.length ? Math.round(data.returns1m.reduce((s, v) => s + v, 0) / data.returns1m.length * 10) / 10 : null,
-        avg3m: data.returns3m.length ? Math.round(data.returns3m.reduce((s, v) => s + v, 0) / data.returns3m.length * 10) / 10 : null,
-        avg1y: data.returns1y.length ? Math.round(data.returns1y.reduce((s, v) => s + v, 0) / data.returns1y.length * 10) / 10 : null,
-        count: new Set([...data.returns1m, ...data.returns3m, ...data.returns1y]).size || 1,
-      }))
-      .sort((a, b) => (b.avg1m ?? -999) - (a.avg1m ?? -999));
-  }, [stockReturns]);
+    return Object.entries(byIndex).map(([symbol, prices]) => {
+      prices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const latest = prices[0];
+      const latestPrice = latest.price;
+
+      const findClosest = (target: Date) => {
+        for (const p of prices) {
+          if (new Date(p.date) <= target) return p.price;
+        }
+        return prices[prices.length - 1]?.price;
+      };
+
+      const calc = (old: number | undefined) =>
+        old && old > 0 ? Math.round(((latestPrice - old) / old) * 1000) / 10 : null;
+
+      return {
+        name: latest.index_name,
+        sector: latest.sector,
+        latestPrice,
+        return1m: calc(findClosest(oneMonthAgo)),
+        return3m: calc(findClosest(threeMonthsAgo)),
+        return1y: calc(findClosest(oneYearAgo)),
+      };
+    }).sort((a, b) => (b.return1m ?? -999) - (a.return1m ?? -999));
+  }, [sectorIndicesData]);
+
+  const handleRefreshSectorIndices = async () => {
+    setRefreshingSectors(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-sector-indices");
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["sector-indices"] });
+      toast({ title: "Sector indices updated", description: data?.message });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+    setRefreshingSectors(false);
+  };
 
   // Build chart data for sentiment by stock
   const sentimentByStock = analyses?.reduce((acc, a) => {
