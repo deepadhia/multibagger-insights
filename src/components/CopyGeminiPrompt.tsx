@@ -82,6 +82,10 @@ Return a SINGLE JSON object. No prose. No markdown backticks.
       "revenue_growth": "Value (Source Quote)",
       "opm": "Value (Source Quote)",
       "pat_growth": "Value (Source Quote)",
+      "vap_ebitda_margin": "Value (Source Quote)",
+      "vap_revenue_share": "Value (Source Quote)",
+      "type4_cylinder_status": "Value (Source Quote)",
+      "net_debt": "Value (Source Quote)",
       "order_book": "Value (Source Quote)"
     }
   },
