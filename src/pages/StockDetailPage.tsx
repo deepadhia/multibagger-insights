@@ -464,28 +464,8 @@ export default function StockDetailPage() {
               </Card>
             )}
 
-            {/* Credibility score */}
-            {credibility !== null && (
-              <Card className="p-4 bg-card border-border card-glow">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Management Credibility</h3>
-                <div className="flex items-center gap-6">
-                  <div className="text-center">
-                    <p className={`text-4xl font-mono font-bold ${credibility >= 70 ? "text-terminal-green" : credibility >= 40 ? "text-terminal-amber" : "text-terminal-red"}`}>
-                      {credibility}%
-                    </p>
-                    <p className="text-[10px] text-muted-foreground font-mono mt-1">
-                      {achievedCount}/{totalCommitments} achieved
-                    </p>
-                  </div>
-                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${credibility >= 70 ? "bg-terminal-green" : credibility >= 40 ? "bg-terminal-amber" : "bg-terminal-red"}`}
-                      style={{ width: `${credibility}%` }}
-                    />
-                  </div>
-                </div>
-              </Card>
-            )}
+            {/* Management Credibility (3 dimensions) */}
+            <ManagementCredibility promises={promises || []} analyses={analyses || []} commitments={commitments || []} />
           </TabsContent>
 
           {/* ═══ FINANCIALS TAB ═══ */}
