@@ -1,0 +1,1 @@
+ALTER TABLE public.stocks ADD COLUMN next_results_date date DEFAULT NULL;
