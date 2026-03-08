@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
+import { InvestmentThesisEditor } from "@/components/InvestmentThesisEditor";
+import { PromisesTab } from "@/components/PromisesTab";
+import { SnapshotsTab } from "@/components/SnapshotsTab";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
