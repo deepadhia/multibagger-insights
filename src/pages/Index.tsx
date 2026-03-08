@@ -21,12 +21,23 @@ function useAllPrices() {
   return useQuery({
     queryKey: ["all-prices"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("prices")
-        .select("stock_id, date, price, volume")
-        .order("date", { ascending: false });
-      if (error) throw error;
-      return data;
+      // Paginate to get all prices (Supabase default limit is 1000)
+      const allData: any[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("prices")
+          .select("stock_id, date, price, volume")
+          .order("date", { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return allData;
     },
   });
 }
@@ -162,13 +173,14 @@ const Index = () => {
     const now = new Date();
     const oneMonthAgo = new Date(now); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
     const threeMonthsAgo = new Date(now); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const oneYearAgo = new Date(now); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const twoYearsAgo = new Date(now); twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
     const threeYearsAgo = new Date(now); threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
 
     return stocks.map(stock => {
       const prices = allPrices.filter(p => p.stock_id === stock.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      if (prices.length === 0) return { stock, latestPrice: null, return1m: null, return3m: null, return1y: null, return2y: null, return3y: null, volumeSpike: false };
+      if (prices.length === 0) return { stock, latestPrice: null, return1m: null, return3m: null, return6m: null, return1y: null, return2y: null, return3y: null, volumeSpike: false };
       const latestPrice = prices[0].price;
       const latestVolume = (prices[0] as any).volume;
       const recentVolumes = prices.slice(1, 21).map(p => (p as any).volume).filter((v: any) => v != null && v > 0);
@@ -181,6 +193,7 @@ const Index = () => {
         stock, latestPrice,
         return1m: calcReturn(getPriceNearDate(prices as any, oneMonthAgo)),
         return3m: calcReturn(getPriceNearDate(prices as any, threeMonthsAgo)),
+        return6m: calcReturn(getPriceNearDate(prices as any, sixMonthsAgo)),
         return1y: calcReturn(getPriceNearDate(prices as any, oneYearAgo)),
         return2y: calcReturn(getPriceNearDate(prices as any, twoYearsAgo)),
         return3y: calcReturn(getPriceNearDate(prices as any, threeYearsAgo)),
@@ -402,31 +415,33 @@ const Index = () => {
                     <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Stock</th>
                     <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Sector</th>
                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">CMP (₹)</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1M</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3M</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1Y</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">2Y</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3Y</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1M</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3M</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">6M</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1Y</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">2Y</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3Y</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockReturns.map(({ stock, latestPrice, return1m, return3m, return1y, return2y, return3y, volumeSpike }) => (
-                    <tr key={stock.id} className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer ${volumeSpike ? "bg-terminal-amber/5 border-l-2 border-l-terminal-amber" : ""}`} onClick={() => navigate(`/stocks/${stock.id}`)}>
-                      <td className="p-2">
-                        <div className="flex items-center gap-1.5">
-                          {volumeSpike && <Zap className="h-3 w-3 text-terminal-amber shrink-0" />}
-                          <span className="font-mono text-sm font-semibold text-foreground">{stock.ticker}</span>
-                        </div>
-                      </td>
-                      <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
-                      <td className="p-2 text-right font-mono text-foreground text-sm">{latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}</td>
-                      <td className="p-2 text-right"><ReturnBadge value={return1m} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return3m} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return1y} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return2y} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return3y} /></td>
-                    </tr>
-                  ))}
+                  {stockReturns.map(({ stock, latestPrice, return1m, return3m, return6m, return1y, return2y, return3y, volumeSpike }) => (
+                     <tr key={stock.id} className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer ${volumeSpike ? "bg-terminal-amber/5 border-l-2 border-l-terminal-amber" : ""}`} onClick={() => navigate(`/stocks/${stock.id}`)}>
+                       <td className="p-2">
+                         <div className="flex items-center gap-1.5">
+                           {volumeSpike && <Zap className="h-3 w-3 text-terminal-amber shrink-0" />}
+                           <span className="font-mono text-sm font-semibold text-foreground">{stock.ticker}</span>
+                         </div>
+                       </td>
+                       <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
+                       <td className="p-2 text-right font-mono text-foreground text-sm">{latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}</td>
+                       <td className="p-2 text-right"><ReturnBadge value={return1m} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return3m} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return6m} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return1y} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return2y} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return3y} /></td>
+                     </tr>
+                   ))}
                 </tbody>
               </table>
             </div>
