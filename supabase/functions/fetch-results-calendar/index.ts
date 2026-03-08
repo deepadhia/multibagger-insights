@@ -3,6 +3,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const BSE_API = 'https://api.bseindia.com/BseIndiaAPI/api';
+const BSE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': 'https://www.bseindia.com/',
+  'Origin': 'https://www.bseindia.com',
+};
+
 const NSE_BASE = 'https://www.nseindia.com';
 const NSE_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -42,108 +51,142 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get NSE cookies
-    let cookies: string;
-    try {
-      cookies = await getNSECookies();
-    } catch (e) {
-      console.error('Failed to get NSE cookies:', e);
-      return new Response(JSON.stringify({ success: false, error: 'Failed to connect to NSE' }), {
-        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Build lookup maps for matching
+    const tickerToStock = new Map<string, typeof stocks[0]>();
+    const nameWords = new Map<string, typeof stocks[0]>();
+    for (const s of stocks) {
+      tickerToStock.set(s.ticker.toUpperCase(), s);
+      // Also map by first significant word of company name for fuzzy matching
+      const words = s.company_name.toUpperCase().split(/\s+/).filter(w => w.length > 2 && !['LTD', 'LIMITED', 'PVT', 'PRIVATE', 'INC', 'CORP', 'THE'].includes(w));
+      if (words.length > 0) {
+        nameWords.set(words[0], s);
+      }
     }
 
-    const authHeaders = { ...NSE_HEADERS, Cookie: cookies };
-    const today = new Date();
     let updated = 0;
-    const results: Array<{ ticker: string; date: string | null }> = [];
+    const matched: Array<{ ticker: string; date: string; source: string }> = [];
+    const matchedIds = new Set<string>();
 
-    // Fetch board meetings from NSE corporate info
-    // NSE provides a board meetings endpoint that lists upcoming quarterly results
-    const bmUrl = `${NSE_BASE}/api/corporate-board-meetings?index=equities`;
-    console.log('Fetching board meetings:', bmUrl);
-
-    let allMeetings: any[] = [];
+    // === SOURCE 1: BSE Forthcoming Results Calendar ===
+    console.log('Fetching BSE forthcoming results...');
     try {
-      const bmResp = await fetch(bmUrl, { headers: authHeaders });
-      if (bmResp.ok) {
-        const bmData = await bmResp.json();
-        allMeetings = Array.isArray(bmData) ? bmData : [];
-        console.log(`Got ${allMeetings.length} board meetings from NSE`);
-      } else {
-        const t = await bmResp.text();
-        console.error('Board meetings response:', bmResp.status, t.substring(0, 300));
-      }
-    } catch (e) {
-      console.error('Board meetings fetch error:', e);
-    }
+      const bseResp = await fetch(`${BSE_API}/Corpforthresults/w`, { headers: BSE_HEADERS });
+      if (bseResp.ok) {
+        const bseData = await bseResp.json();
+        console.log(`BSE returned ${Array.isArray(bseData) ? bseData.length : 0} forthcoming results`);
 
-    // Build a map: ticker -> nearest future meeting date for \"Financial Results\"
-    const tickerMap = new Map<string, string>();
-    for (const m of allMeetings) {
-      const symbol = (m.bm_symbol || m.symbol || '').toUpperCase();
-      const purpose = (m.bm_purpose || m.purpose || '').toLowerCase();
-      const dateStr = m.bm_date || m.meetingDate || m.date || '';
+        if (Array.isArray(bseData)) {
+          for (const item of bseData) {
+            const bseName = (item.short_name || item.Long_Name || '').toUpperCase();
+            const meetingDate = item.meeting_date || '';
 
-      // Only consider meetings related to financial results
-      if (!purpose.includes('financial result') && !purpose.includes('quarterly') && !purpose.includes('audited') && !purpose.includes('un-audited')) {
-        continue;
-      }
+            // Parse date like "23 Oct 2023" or "13 Mar 2026"
+            let parsedDate: Date | null = null;
+            try {
+              parsedDate = new Date(meetingDate);
+              if (isNaN(parsedDate.getTime())) continue;
+            } catch {
+              continue;
+            }
 
-      // Parse the date
-      let meetDate: Date | null = null;
-      try {
-        meetDate = new Date(dateStr);
-        if (isNaN(meetDate.getTime())) {
-          // Try DD-Mon-YYYY format
-          const parts = dateStr.split('-');
-          if (parts.length === 3) {
-            meetDate = new Date(`${parts[1]} ${parts[0]}, ${parts[2]}`);
+            const dateStr = parsedDate.toISOString().split('T')[0];
+            const now = new Date();
+            if (parsedDate < now) continue; // Skip past dates
+
+            // Try to match by ticker or company name
+            let matchedStock: typeof stocks[0] | undefined;
+
+            // Direct ticker match with BSE short_name
+            for (const [ticker, stock] of tickerToStock) {
+              if (bseName.includes(ticker) || ticker.includes(bseName.replace(/\s+/g, ''))) {
+                matchedStock = stock;
+                break;
+              }
+            }
+
+            // Fuzzy name match
+            if (!matchedStock) {
+              const bseWords = bseName.split(/\s+/).filter(w => w.length > 2 && !['LTD', 'LIMITED', 'PVT', 'PRIVATE', 'INC', 'CORP', 'THE'].includes(w));
+              for (const bw of bseWords) {
+                if (nameWords.has(bw)) {
+                  matchedStock = nameWords.get(bw);
+                  break;
+                }
+              }
+            }
+
+            if (matchedStock && !matchedIds.has(matchedStock.id)) {
+              matchedIds.add(matchedStock.id);
+              const { error } = await supabase
+                .from('stocks')
+                .update({ next_results_date: dateStr })
+                .eq('id', matchedStock.id);
+              if (!error) {
+                updated++;
+                matched.push({ ticker: matchedStock.ticker, date: dateStr, source: 'BSE' });
+              }
+            }
           }
         }
-      } catch {
-        continue;
+      } else {
+        console.log('BSE API response:', bseResp.status);
       }
-
-      if (!meetDate || isNaN(meetDate.getTime())) continue;
-
-      // Only future or today's meetings
-      const meetDateStr = meetDate.toISOString().split('T')[0];
-      if (meetDate < today && meetDateStr !== today.toISOString().split('T')[0]) continue;
-
-      // Keep the nearest future date for each ticker
-      const existing = tickerMap.get(symbol);
-      if (!existing || meetDateStr < existing) {
-        tickerMap.set(symbol, meetDateStr);
-      }
+    } catch (e) {
+      console.error('BSE fetch error:', e);
     }
 
-    console.log(`Found upcoming results for ${tickerMap.size} tickers:`, Object.fromEntries(tickerMap));
+    // === SOURCE 2: NSE Board Meetings (supplementary) ===
+    console.log('Fetching NSE board meetings...');
+    try {
+      const cookies = await getNSECookies();
+      const authHeaders = { ...NSE_HEADERS, Cookie: cookies };
+      const bmResp = await fetch(`${NSE_BASE}/api/corporate-board-meetings?index=equities`, { headers: authHeaders });
+      if (bmResp.ok) {
+        const bmData = await bmResp.json();
+        const meetings = Array.isArray(bmData) ? bmData : [];
+        console.log(`NSE returned ${meetings.length} board meetings`);
 
-    // Update stocks
-    for (const stock of stocks) {
-      const ticker = stock.ticker.toUpperCase();
-      const nextDate = tickerMap.get(ticker) || null;
+        for (const m of meetings) {
+          const symbol = (m.bm_symbol || m.symbol || '').toUpperCase();
+          const purpose = (m.bm_purpose || m.purpose || '').toLowerCase();
+          const dateStr = m.bm_date || m.meetingDate || m.date || '';
 
-      if (nextDate) {
-        const { error } = await supabase
-          .from('stocks')
-          .update({ next_results_date: nextDate })
-          .eq('id', stock.id);
-        if (error) {
-          console.error(`Failed to update ${ticker}:`, error);
-        } else {
-          updated++;
-          results.push({ ticker, date: nextDate });
+          if (!purpose.includes('financial result') && !purpose.includes('quarterly') && !purpose.includes('audited') && !purpose.includes('un-audited')) continue;
+
+          let meetDate: Date | null = null;
+          try {
+            meetDate = new Date(dateStr);
+            if (isNaN(meetDate.getTime())) continue;
+          } catch {
+            continue;
+          }
+
+          const meetDateStr = meetDate.toISOString().split('T')[0];
+          if (meetDate < new Date()) continue;
+
+          const stock = tickerToStock.get(symbol);
+          if (stock && !matchedIds.has(stock.id)) {
+            matchedIds.add(stock.id);
+            const { error } = await supabase
+              .from('stocks')
+              .update({ next_results_date: meetDateStr })
+              .eq('id', stock.id);
+            if (!error) {
+              updated++;
+              matched.push({ ticker: stock.ticker, date: meetDateStr, source: 'NSE' });
+            }
+          }
         }
       }
+    } catch (e) {
+      console.error('NSE fetch error:', e);
     }
 
     return new Response(JSON.stringify({
       success: true,
       updated,
-      total_meetings: allMeetings.length,
-      matched: results,
+      total_stocks: stocks.length,
+      matched,
       message: `Updated ${updated} of ${stocks.length} stocks with upcoming results dates`,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
