@@ -105,7 +105,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
     }
   };
 
-  const effectiveQuarter = quarterOverride || parsed?.quarterly_snapshot?.quarter || "";
+  const effectiveQuarter = (quarterOverride && quarterOverride !== "auto") ? quarterOverride : parsed?.quarterly_snapshot?.quarter || "";
 
   const handleCommit = async () => {
     if (!parsed || !effectiveQuarter) return;
@@ -195,10 +195,11 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         <div className="space-y-1">
           <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Quarter (override or auto-detect from JSON)</label>
           <Select value={quarterOverride} onValueChange={setQuarterOverride}>
-            <SelectTrigger className="font-mono text-xs">
+            <SelectTrigger className="font-mono text-xs h-9 bg-muted border-border">
               <SelectValue placeholder="Auto-detect from JSON" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-card border-border z-[200]">
+              <SelectItem key="auto" value="auto" className="font-mono text-xs">Auto-detect from JSON</SelectItem>
               {quarterOptions.map(q => (
                 <SelectItem key={q} value={q} className="font-mono text-xs">{q}</SelectItem>
               ))}

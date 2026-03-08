@@ -3,7 +3,7 @@ import { StatsCard } from "@/components/StatsCard";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
 import { useStocks, useAllAnalysis } from "@/hooks/useStocks";
-import { BarChart3, TrendingUp, FileText, Target, Activity, ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, Zap } from "lucide-react";
+import { BarChart3, TrendingUp, FileText, Target, Activity, ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, Zap, CalendarClock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -229,6 +229,65 @@ const Index = () => {
           <StatsCard title="Analyses" value={analyses?.length || 0} icon={FileText} />
           <StatsCard title="Watchlist" value={watchlistStocks} icon={Target} />
         </div>
+
+        {/* Upcoming Results Dates Widget */}
+        {stocks && stocks.filter(s => s.next_results_date).length > 0 && (
+          <Card className="p-4 bg-card border-border card-glow">
+            <div className="flex items-center gap-2 mb-4">
+              <CalendarClock className="h-4 w-4 text-primary" />
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Upcoming Results</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {stocks
+                .filter(s => s.next_results_date)
+                .map(s => {
+                  const resultsDate = new Date(s.next_results_date!);
+                  const now = new Date();
+                  const diffMs = resultsDate.getTime() - now.getTime();
+                  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                  const isPast = diffDays < 0;
+                  const isToday = diffDays === 0;
+                  const isThisWeek = diffDays > 0 && diffDays <= 7;
+                  return { ...s, resultsDate, diffDays, isPast, isToday, isThisWeek };
+                })
+                .sort((a, b) => a.resultsDate.getTime() - b.resultsDate.getTime())
+                .filter(s => s.diffDays >= -1) // Show today and future only
+                .map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => navigate(`/stocks/${s.id}`)}
+                    className={`p-3 rounded-md border cursor-pointer transition-colors hover:bg-muted/50 ${
+                      s.isToday
+                        ? "border-terminal-red/50 bg-terminal-red/5 animate-pulse"
+                        : s.isThisWeek
+                        ? "border-terminal-amber/40 bg-terminal-amber/5"
+                        : "border-border bg-muted/20"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-sm font-semibold text-foreground">{s.ticker}</span>
+                      <Badge
+                        variant="outline"
+                        className={`font-mono text-[10px] ${
+                          s.isToday
+                            ? "text-terminal-red border-terminal-red/40 bg-terminal-red/10"
+                            : s.isThisWeek
+                            ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {s.isToday ? "TODAY" : `${s.diffDays}d`}
+                      </Badge>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-mono">
+                      {s.resultsDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{s.company_name}</div>
+                  </div>
+                ))}
+            </div>
+          </Card>
+        )}
 
         {stockReturns.length > 0 && stockReturns.some(sr => sr.latestPrice) && (
           <Card className="p-4 bg-card border-border card-glow overflow-hidden">
