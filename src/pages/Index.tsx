@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import {
   BarChart3, TrendingUp, TrendingDown, FileText, Target, Activity,
   ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, Zap, CalendarClock,
-  Shield, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Minus
+  Shield, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Minus, ExternalLink, Package
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -99,6 +99,39 @@ const Index = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [refreshingSectors, setRefreshingSectors] = useState(false);
+  const [orderAlerts, setOrderAlerts] = useState<Array<{ stock: any; title: string; date: string; url: string }>>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // Fetch new order announcements for all stocks
+  const fetchOrderAlerts = async () => {
+    if (!stocks || stocks.length === 0) return;
+    setLoadingOrders(true);
+    const allOrders: Array<{ stock: any; title: string; date: string; url: string }> = [];
+    // Fetch in parallel batches of 5
+    const batches = [];
+    for (let i = 0; i < stocks.length; i += 5) {
+      batches.push(stocks.slice(i, i + 5));
+    }
+    for (const batch of batches) {
+      const results = await Promise.allSettled(
+        batch.map(stock =>
+          supabase.functions.invoke("fetch-transcript-links", {
+            body: { ticker: stock.ticker, company_name: stock.company_name, screener_slug: stock.screener_slug },
+          }).then(({ data }) => {
+            if (data?.orders) {
+              for (const o of data.orders) {
+                allOrders.push({ stock, title: o.title, date: o.date, url: o.url });
+              }
+            }
+          })
+        )
+      );
+    }
+    allOrders.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    setOrderAlerts(allOrders.slice(0, 15));
+    setLoadingOrders(false);
+  };
+
 
   // ── Compute signals & thesis status for each stock ──
   const stockSignals = useMemo(() => {
@@ -343,6 +376,51 @@ const Index = () => {
             </div>
           </Card>
         )}
+
+        {/* ── NEW ORDER ALERTS ── */}
+        <Card className="p-4 bg-card border-border card-glow">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-terminal-green" />
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">New Order Wins</h3>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchOrderAlerts}
+              disabled={loadingOrders}
+              className="h-6 px-2 text-[10px] font-mono"
+            >
+              {loadingOrders ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+              {orderAlerts.length === 0 ? "Scan All Stocks" : "Refresh"}
+            </Button>
+          </div>
+          {orderAlerts.length === 0 && !loadingOrders && (
+            <p className="text-xs text-muted-foreground italic">
+              Click "Scan All Stocks" to find new order announcements from BSE filings.
+            </p>
+          )}
+          {orderAlerts.length > 0 && (
+            <div className="space-y-1.5">
+              {orderAlerts.map((alert, i) => (
+                <a
+                  key={i}
+                  href={alert.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between px-3 py-2 rounded-md border border-terminal-green/20 bg-terminal-green/5 hover:bg-terminal-green/10 cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono text-xs font-bold text-primary shrink-0">{alert.stock.ticker}</span>
+                    <span className="text-xs text-foreground truncate">{alert.title}</span>
+                    {alert.date && <span className="text-[10px] text-muted-foreground font-mono shrink-0">{alert.date}</span>}
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </a>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* ── THESIS STATUS PER STOCK ── */}
         <Card className="p-4 bg-card border-border card-glow overflow-hidden">

@@ -31,13 +31,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    const transcripts: Array<{
+    type LinkItem = {
       title: string;
       date: string;
       source: string;
       url: string;
       type: string;
-    }> = [];
+    };
+
+    const transcripts: LinkItem[] = [];
+    const orderAnnouncements: LinkItem[] = [];
+
+    // Keywords that indicate the filing is NOT a transcript
+    const EXCLUDE_KEYWORDS = [
+      "intimation", "prior intimation", "regulation 30", "regulation 33",
+      "board meeting", "outcome of board", "compliance certificate",
+      "newspaper publication", "corrigendum", "clarification",
+      "record date", "dividend", "agm", "egm", "postal ballot",
+      "book closure", "loss of share", "duplicate share",
+      "change in director", "cessation", "appointment",
+      "resignation", "disclosure under", "voting results",
+      "scrutinizer report", "annual report", "notice of",
+    ];
+
+    // Keywords for new order wins
+    const ORDER_KEYWORDS = [
+      "new order", "order win", "order received", "order bagged",
+      "contract awarded", "letter of intent", "loi received",
+      "work order", "purchase order", "order book",
+    ];
 
     // === SOURCE 1: BSE Corporate Announcements ===
     const toDate = new Date();
@@ -53,54 +75,76 @@ Deno.serve(async (req) => {
       }
     }
 
-    for (const searchTerm of bseSearchTerms) {
-      try {
-        // BSE Announcement search - look for concall/transcript related filings
-        const bseUrl = `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strCat=Result&strPrevDate=${formatDate(fromDate)}&strScrip=${encodeURIComponent(searchTerm)}&strSearch=P&strToDate=${formatDate(toDate)}&strType=C`;
+    const processBseItems = (table: any[]) => {
+      for (const item of table) {
+        const headline = (item.NEWSSUB || "").toLowerCase();
+        const attachUrl = item.ATTACHMENTNAME || "";
 
-        console.log(`Searching BSE for: ${searchTerm}`);
-        const bseResp = await fetch(bseUrl, { headers: BSE_HEADERS });
+        const newsDate = item.NEWS_DT || item.DT_TM || "";
+        let dateStr = "";
+        try {
+          const d = new Date(newsDate);
+          if (!isNaN(d.getTime())) dateStr = d.toISOString().split("T")[0];
+        } catch { /* skip */ }
 
-        if (bseResp.ok) {
-          const data = await bseResp.json();
-          const table = data?.Table || [];
-          console.log(`BSE returned ${table.length} results for ${searchTerm}`);
+        const buildLink = (title: string, type: string): LinkItem => ({
+          title: title || "Filing",
+          date: dateStr,
+          source: "BSE",
+          url: attachUrl.startsWith("http") ? attachUrl : `https://www.bseindia.com/xml-data/corpfiling/AttachLive/${attachUrl}`,
+          type,
+        });
 
-          for (const item of table) {
-            const headline = (item.NEWSSUB || "").toLowerCase();
-            const attachUrl = item.ATTACHMENTNAME || "";
-
-            // Filter for transcript/concall related filings
-            if (
-              headline.includes("transcript") ||
-              headline.includes("concall") ||
-              headline.includes("con call") ||
-              headline.includes("conference call") ||
-              headline.includes("earnings call") ||
-              headline.includes("analyst meet") ||
-              headline.includes("investor presentation")
-            ) {
-              const newsDate = item.NEWS_DT || item.DT_TM || "";
-              let dateStr = "";
-              try {
-                const d = new Date(newsDate);
-                if (!isNaN(d.getTime())) dateStr = d.toISOString().split("T")[0];
-              } catch { /* skip */ }
-
-              transcripts.push({
-                title: item.NEWSSUB || "Transcript",
-                date: dateStr,
-                source: "BSE",
-                url: attachUrl.startsWith("http") ? attachUrl : `https://www.bseindia.com/xml-data/corpfiling/AttachLive/${attachUrl}`,
-                type: headline.includes("presentation") ? "presentation" : "transcript",
-              });
-            }
-          }
-        } else {
-          console.log(`BSE search failed for ${searchTerm}: ${bseResp.status}`);
+        // Check for new order announcements
+        if (ORDER_KEYWORDS.some(k => headline.includes(k))) {
+          orderAnnouncements.push(buildLink(item.NEWSSUB || "New Order", "order"));
+          continue;
         }
-      } catch (e) {
-        console.error(`BSE error for ${searchTerm}:`, e);
+
+        // Filter for transcript/concall related filings
+        const isTranscript =
+          headline.includes("transcript") ||
+          headline.includes("concall") ||
+          headline.includes("con call") ||
+          headline.includes("conference call") ||
+          headline.includes("earnings call") ||
+          headline.includes("analyst meet") ||
+          headline.includes("investor presentation");
+
+        if (!isTranscript) continue;
+
+        // Exclude intimations & generic notices
+        const isExcluded = EXCLUDE_KEYWORDS.some(k => headline.includes(k));
+        if (isExcluded && !headline.includes("transcript")) continue;
+
+        transcripts.push(buildLink(
+          item.NEWSSUB || "Transcript",
+          headline.includes("presentation") ? "presentation" : "transcript",
+        ));
+      }
+    };
+
+    for (const searchTerm of bseSearchTerms) {
+      // Search both Result and Board Meeting/Corp Action categories
+      const categories = ["Result", "Corp. Action"];
+      for (const cat of categories) {
+        try {
+          const bseUrl = `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strCat=${encodeURIComponent(cat)}&strPrevDate=${formatDate(fromDate)}&strScrip=${encodeURIComponent(searchTerm)}&strSearch=P&strToDate=${formatDate(toDate)}&strType=C`;
+
+          console.log(`Searching BSE [${cat}] for: ${searchTerm}`);
+          const bseResp = await fetch(bseUrl, { headers: BSE_HEADERS });
+
+          if (bseResp.ok) {
+            const data = await bseResp.json();
+            const table = data?.Table || [];
+            console.log(`BSE [${cat}] returned ${table.length} results for ${searchTerm}`);
+            processBseItems(table);
+          } else {
+            console.log(`BSE [${cat}] search failed for ${searchTerm}: ${bseResp.status}`);
+          }
+        } catch (e) {
+          console.error(`BSE [${cat}] error for ${searchTerm}:`, e);
+        }
       }
     }
 
@@ -188,11 +232,21 @@ Deno.serve(async (req) => {
     // Sort by date descending
     unique.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
+    // Deduplicate orders
+    const seenOrders = new Set<string>();
+    const uniqueOrders = orderAnnouncements.filter(t => {
+      if (seenOrders.has(t.url)) return false;
+      seenOrders.add(t.url);
+      return true;
+    });
+    uniqueOrders.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
     return new Response(JSON.stringify({
       success: true,
       ticker,
       count: unique.length,
       transcripts: unique,
+      orders: uniqueOrders,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
