@@ -87,6 +87,7 @@ export default function TranscriptsPage() {
           dodged_questions: snap.dodged_questions || [],
           red_flags: snap.red_flags || [],
           metrics: snap.metrics || {},
+          raw_ai_output: payload,
         }, { onConflict: "stock_id,quarter" });
 
       if (snapError) throw snapError;

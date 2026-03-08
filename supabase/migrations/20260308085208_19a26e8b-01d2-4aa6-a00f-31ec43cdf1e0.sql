@@ -1,0 +1,1 @@
+ALTER TABLE public.quarterly_snapshots ADD COLUMN raw_ai_output jsonb;
