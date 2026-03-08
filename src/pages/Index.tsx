@@ -424,14 +424,24 @@ const Index = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {stockReturns.map(({ stock, latestPrice, return1m, return3m, return1y, return2y, return3y, volumeSpike }) => (
-                    <tr key={stock.id} className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer ${volumeSpike ? "bg-terminal-amber/5 border-l-2 border-l-terminal-amber" : ""}`} onClick={() => navigate(`/stocks/${stock.id}`)}>
-                      <td className="p-2">
-                        <div className="flex items-center gap-1.5">
-                          {volumeSpike && <Zap className="h-3 w-3 text-terminal-amber shrink-0" />}
-                          <span className="font-mono text-sm font-semibold text-foreground">{stock.ticker}</span>
-                        </div>
-                      </td>
+                  {stockReturns.map(({ stock, latestPrice, return1m, return3m, return6m, return1y, return2y, return3y, volumeSpike }) => (
+                     <tr key={stock.id} className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer ${volumeSpike ? "bg-terminal-amber/5 border-l-2 border-l-terminal-amber" : ""}`} onClick={() => navigate(`/stocks/${stock.id}`)}>
+                       <td className="p-2">
+                         <div className="flex items-center gap-1.5">
+                           {volumeSpike && <Zap className="h-3 w-3 text-terminal-amber shrink-0" />}
+                           <span className="font-mono text-sm font-semibold text-foreground">{stock.ticker}</span>
+                         </div>
+                       </td>
+                       <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
+                       <td className="p-2 text-right font-mono text-foreground text-sm">{latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}</td>
+                       <td className="p-2 text-right"><ReturnBadge value={return1m} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return3m} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return6m} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return1y} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return2y} /></td>
+                       <td className="p-2 text-right"><ReturnBadge value={return3y} /></td>
+                     </tr>
+                   ))}
                       <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
                       <td className="p-2 text-right font-mono text-foreground text-sm">{latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}</td>
                       <td className="p-2 text-right"><ReturnBadge value={return1m} /></td>
