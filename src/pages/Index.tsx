@@ -442,15 +442,7 @@ const Index = () => {
                        <td className="p-2 text-right"><ReturnBadge value={return3y} /></td>
                      </tr>
                    ))}
-                      <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
-                      <td className="p-2 text-right font-mono text-foreground text-sm">{latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}</td>
-                      <td className="p-2 text-right"><ReturnBadge value={return1m} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return3m} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return1y} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return2y} /></td>
-                      <td className="p-2 text-right"><ReturnBadge value={return3y} /></td>
-                    </tr>
-                  ))}
+                </tbody>
                 </tbody>
               </table>
             </div>
