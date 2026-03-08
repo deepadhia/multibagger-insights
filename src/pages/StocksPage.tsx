@@ -139,7 +139,17 @@ export default function StocksPage() {
               className="font-mono"
             >
               {refreshingPrices ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {refreshingPrices ? "Refreshing..." : "Refresh All Prices"}
+              {refreshingPrices ? "Refreshing..." : "Refresh Prices"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshAllFinancials}
+              disabled={refreshingFinancials || !stocks?.length}
+              className="font-mono"
+            >
+              {refreshingFinancials ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {refreshingFinancials ? "Refreshing..." : "Refresh Financials"}
             </Button>
             <AddStockDialog />
           </div>
