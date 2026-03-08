@@ -182,18 +182,33 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         }
       }
 
-      // 3. Insert new promises
+      // 3. Insert new promises (deduplicate against existing)
       let insertedCount = 0;
       if (parsed.new_promises?.length) {
-        const rows = parsed.new_promises.map(np => ({
-          stock_id: stockId,
-          promise_text: np.promise_text,
-          made_in_quarter: np.made_in_quarter || effectiveQuarter,
-          target_deadline: np.target_deadline || null,
-          status: "pending",
-        }));
-        const { error } = await supabase.from("management_promises").insert(rows);
-        if (!error) insertedCount = rows.length;
+        // Fetch existing promises for this stock to avoid duplicates
+        const { data: existingPromises } = await supabase
+          .from("management_promises")
+          .select("promise_text, made_in_quarter")
+          .eq("stock_id", stockId);
+
+        const existingSet = new Set(
+          (existingPromises || []).map(p => `${p.promise_text}::${p.made_in_quarter}`)
+        );
+
+        const newRows = parsed.new_promises
+          .map(np => ({
+            stock_id: stockId,
+            promise_text: np.promise_text,
+            made_in_quarter: np.made_in_quarter || effectiveQuarter,
+            target_deadline: np.target_deadline || null,
+            status: "pending",
+          }))
+          .filter(row => !existingSet.has(`${row.promise_text}::${row.made_in_quarter}`));
+
+        if (newRows.length > 0) {
+          const { error } = await supabase.from("management_promises").insert(newRows);
+          if (!error) insertedCount = newRows.length;
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
