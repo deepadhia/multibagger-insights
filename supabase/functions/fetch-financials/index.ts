@@ -162,16 +162,18 @@ function extractTableData(html: string, sectionId: string): { headers: string[];
     }
   }
 
-  // Extract row data
+  // Extract row data — normalize labels by stripping HTML entities and special chars
   const rows: Record<string, number[]> = {};
   const trs = table[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
   for (const tr of trs) {
     const tds = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
     if (tds.length === 0) continue;
-    const label = tds[0].replace(/<[^>]+>/g, "").trim();
+    let label = tds[0].replace(/<[^>]+>/g, "").trim();
+    // Normalize HTML entities and special chars
+    label = label.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s*\+\s*$/, "").trim();
     if (!label) continue;
     const values = tds.slice(1).map(c => {
-      const raw = c.replace(/<[^>]+>/g, "").replace(/,/g, "").replace(/%/g, "").trim();
+      const raw = c.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, "").replace(/,/g, "").replace(/%/g, "").trim();
       const num = parseFloat(raw);
       return isNaN(num) ? 0 : num;
     });
