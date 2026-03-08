@@ -199,6 +199,50 @@ export type Database = {
           },
         ]
       }
+      shareholding: {
+        Row: {
+          created_at: string
+          diis: number | null
+          fiis: number | null
+          id: string
+          others: number | null
+          promoters: number | null
+          public_holding: number | null
+          quarter: string
+          stock_id: string
+        }
+        Insert: {
+          created_at?: string
+          diis?: number | null
+          fiis?: number | null
+          id?: string
+          others?: number | null
+          promoters?: number | null
+          public_holding?: number | null
+          quarter: string
+          stock_id: string
+        }
+        Update: {
+          created_at?: string
+          diis?: number | null
+          fiis?: number | null
+          id?: string
+          others?: number | null
+          promoters?: number | null
+          public_holding?: number | null
+          quarter?: string
+          stock_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shareholding_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stocks: {
         Row: {
           buy_price: number | null

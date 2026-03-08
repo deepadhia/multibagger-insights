@@ -64,6 +64,7 @@ async function processAndStore(html: string, stock_id: string, corsHeaders: Reco
   console.log("Parsed ratios:", JSON.stringify(metrics.ratios));
   console.log("Parsed yearly count:", metrics.yearly.length);
   console.log("Parsed quarterly count:", metrics.quarterly.length);
+  console.log("Parsed shareholding count:", metrics.shareholding.length);
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -106,11 +107,29 @@ async function processAndStore(html: string, stock_id: string, corsHeaders: Reco
     if (error) console.error("Upsert quarterly error:", error);
   }
 
+  // Upsert shareholding quarterly data
+  for (const sh of metrics.shareholding) {
+    const { error } = await supabase.from("shareholding").upsert(
+      {
+        stock_id,
+        quarter: sh.quarter,
+        promoters: sh.promoters,
+        fiis: sh.fiis,
+        diis: sh.diis,
+        public_holding: sh.public_holding,
+        others: sh.others,
+      },
+      { onConflict: "stock_id,quarter", ignoreDuplicates: false }
+    );
+    if (error) console.error("Upsert shareholding error:", error);
+  }
+
   return new Response(JSON.stringify({
     success: true,
     ratios: metrics.ratios,
     yearly: metrics.yearly,
     quarterly: metrics.quarterly,
+    shareholding: metrics.shareholding,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -282,23 +301,36 @@ function parseScreenerData(html: string) {
   const cfo = cfTTMIdx >= 0 ? cfoRow.filter((_, i) => i !== cfTTMIdx) : cfoRow;
   const capex = cfTTMIdx >= 0 ? capexRow.filter((_, i) => i !== cfTTMIdx) : capexRow;
 
-  // ── 5. Shareholding (promoter %) — quarterly, map to nearest FY year ──
+  // ── 5. Shareholding — quarterly data for Promoter, FII, DII, Public, Others ──
   const sh = extractTableData(html, "shareholding");
   console.log("Shareholding row labels:", JSON.stringify(Object.keys(sh.rows)));
   const shQuarters = sh.headers;
   const promoterRow = findRow(sh.rows, "promoter");
+  const fiiRow = findRow(sh.rows, "fii", "foreign");
+  const diiRow = findRow(sh.rows, "dii", "domestic");
+  const publicRow = findRow(sh.rows, "public");
+  const othersRow = findRow(sh.rows, "other", "government");
   console.log("Promoter row found:", promoterRow.length, "values");
+
+  // Build quarterly shareholding entries
+  const shareholding = shQuarters.map((q, i) => ({
+    quarter: q,
+    promoters: promoterRow[i] ?? null,
+    fiis: fiiRow[i] ?? null,
+    diis: diiRow[i] ?? null,
+    public_holding: publicRow[i] ?? null,
+    others: othersRow[i] ?? null,
+  }));
 
   // Build a map: year → promoter% (use March quarter for FY, or latest available)
   const promoterByYear: Map<number, number> = new Map();
   for (let i = 0; i < shQuarters.length; i++) {
-    const qLabel = shQuarters[i]; // e.g. "Mar 2023", "Dec 2024"
+    const qLabel = shQuarters[i];
     const yearMatch = qLabel.match(/(\d{4})/);
     if (!yearMatch) continue;
     const year = parseInt(yearMatch[1]);
     const val = promoterRow[i];
     if (!val || val === 0) continue;
-    // Prefer March quarter (FY end), but overwrite with latest
     if (qLabel.includes("Mar")) {
       promoterByYear.set(year, val);
     } else if (!promoterByYear.has(year)) {
@@ -418,5 +450,5 @@ function parseScreenerData(html: string) {
     capex: null,
   }));
 
-  return { ratios, yearly, quarterly };
+  return { ratios, yearly, quarterly, shareholding };
 }

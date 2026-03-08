@@ -49,3 +49,19 @@ export function useStockPrices(stockId: string) {
     enabled: !!stockId,
   });
 }
+
+export function useShareholding(stockId: string) {
+  return useQuery({
+    queryKey: ["shareholding", stockId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("shareholding")
+        .select("*")
+        .eq("stock_id", stockId)
+        .order("quarter", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!stockId,
+  });
+}

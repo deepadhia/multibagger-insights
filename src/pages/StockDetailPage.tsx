@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStock, useStockAnalysis, useStockCommitments } from "@/hooks/useStocks";
-import { useFinancialMetrics, useFinancialResults, useStockPrices } from "@/hooks/useFinancials";
+import { useFinancialMetrics, useFinancialResults, useStockPrices, useShareholding } from "@/hooks/useFinancials";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ export default function StockDetailPage() {
   const { data: financials } = useFinancialMetrics(id!);
   const { data: quarterlyResults } = useFinancialResults(id!);
   const { data: prices } = useStockPrices(id!);
+  const { data: shareholding } = useShareholding(id!);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
@@ -58,6 +59,7 @@ export default function StockDetailPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
       queryClient.invalidateQueries({ queryKey: ["financial-results", id] });
+      queryClient.invalidateQueries({ queryKey: ["shareholding", id] });
       toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -131,7 +133,7 @@ export default function StockDetailPage() {
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
 
   // Multibagger signal detection
-  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || []);
+  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || [], shareholding || []);
 
   // Chart data
   const sentimentData = analyses?.map(a => ({
@@ -508,6 +510,98 @@ export default function StockDetailPage() {
               </Card>
             )}
 
+            {/* Shareholding Pattern (Quarterly) */}
+            {shareholding && shareholding.length > 0 && (
+              <>
+                <Card className="p-4 bg-card border-border card-glow">
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Shareholding Pattern (%)</h3>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <AreaChart data={shareholding}>
+                      <defs>
+                        <linearGradient id="promoterGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(142 70% 45%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(142 70% 45%)" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="fiiGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(200 80% 55%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(200 80% 55%)" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="diiGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(45 90% 55%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(45 90% 55%)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 16%)" />
+                      <XAxis dataKey="quarter" tick={{ fill: "hsl(215 15% 50%)", fontSize: 9, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={50} />
+                      <YAxis tick={{ fill: "hsl(215 15% 50%)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={chartTooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 10, fontFamily: "JetBrains Mono" }} />
+                      <Area type="monotone" dataKey="promoters" name="Promoters" stroke="hsl(142 70% 45%)" fill="url(#promoterGrad)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="fiis" name="FIIs" stroke="hsl(200 80% 55%)" fill="url(#fiiGrad)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="diis" name="DIIs" stroke="hsl(45 90% 55%)" fill="url(#diiGrad)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </Card>
+
+                <Card className="p-4 bg-card border-border card-glow overflow-hidden">
+                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Quarterly Shareholding</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full data-grid">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Quarter</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Promoters</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">FIIs</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">DIIs</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Public</th>
+                          <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Others</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...shareholding].reverse().map((sh, idx) => {
+                          const prev = [...shareholding].reverse()[idx + 1];
+                          const pChange = prev && sh.promoters != null && prev.promoters != null ? sh.promoters - prev.promoters : null;
+                          const fChange = prev && sh.fiis != null && prev.fiis != null ? sh.fiis - prev.fiis : null;
+                          const dChange = prev && sh.diis != null && prev.diis != null ? sh.diis - prev.diis : null;
+                          return (
+                            <tr key={sh.id} className="border-b border-border/50 hover:bg-muted/30">
+                              <td className="p-2 font-semibold text-foreground">{sh.quarter}</td>
+                              <td className="p-2 text-right">
+                                <span className="font-mono text-foreground">{sh.promoters != null ? `${sh.promoters}%` : "—"}</span>
+                                {pChange !== null && pChange !== 0 && (
+                                  <span className={`ml-1 text-[10px] font-mono ${pChange > 0 ? "text-terminal-green" : "text-terminal-red"}`}>
+                                    {pChange > 0 ? "↑" : "↓"}{Math.abs(pChange).toFixed(1)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-right">
+                                <span className="font-mono text-foreground">{sh.fiis != null ? `${sh.fiis}%` : "—"}</span>
+                                {fChange !== null && fChange !== 0 && (
+                                  <span className={`ml-1 text-[10px] font-mono ${fChange > 0 ? "text-terminal-green" : "text-terminal-red"}`}>
+                                    {fChange > 0 ? "↑" : "↓"}{Math.abs(fChange).toFixed(1)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-right">
+                                <span className="font-mono text-foreground">{sh.diis != null ? `${sh.diis}%` : "—"}</span>
+                                {dChange !== null && dChange !== 0 && (
+                                  <span className={`ml-1 text-[10px] font-mono ${dChange > 0 ? "text-terminal-green" : "text-terminal-red"}`}>
+                                    {dChange > 0 ? "↑" : "↓"}{Math.abs(dChange).toFixed(1)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-right font-mono text-muted-foreground">{sh.public_holding != null ? `${sh.public_holding}%` : "—"}</td>
+                              <td className="p-2 text-right font-mono text-muted-foreground">{sh.others != null ? `${sh.others}%` : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </>
+            )}
+
             {/* Charts */}
             {yearlyChartData.length > 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -775,7 +869,8 @@ export default function StockDetailPage() {
 function detectMultibaggerSignals(
   financials: any[],
   latestAnalysis: any,
-  commitments: any[]
+  commitments: any[],
+  shareholding: any[]
 ): { label: string; type: "bullish" | "warning" | "bearish" }[] {
   const signals: { label: string; type: "bullish" | "warning" | "bearish" }[] = [];
   if (financials.length < 2) return signals;
@@ -825,6 +920,53 @@ function detectMultibaggerSignals(
   // High promoter holding
   if (latest.promoter_holding && latest.promoter_holding >= 60) {
     signals.push({ label: `High promoter ${latest.promoter_holding}%`, type: "bullish" });
+  }
+
+  // ── Shareholding-based signals ──
+  if (shareholding.length >= 2) {
+    const latestSH = shareholding[shareholding.length - 1];
+    const prevSH = shareholding[shareholding.length - 2];
+
+    // Promoter changes
+    if (latestSH.promoters != null && prevSH.promoters != null) {
+      const pChange = latestSH.promoters - prevSH.promoters;
+      if (pChange > 0.5) {
+        signals.push({ label: `Promoter ↑ ${pChange.toFixed(1)}%`, type: "bullish" });
+      } else if (pChange < -1) {
+        signals.push({ label: `Promoter ↓ ${Math.abs(pChange).toFixed(1)}%`, type: "warning" });
+      } else if (pChange < -3) {
+        signals.push({ label: `Promoter selling ${Math.abs(pChange).toFixed(1)}%`, type: "bearish" });
+      }
+    }
+
+    // FII changes
+    if (latestSH.fiis != null && prevSH.fiis != null) {
+      const fiiChange = latestSH.fiis - prevSH.fiis;
+      if (fiiChange > 1) {
+        signals.push({ label: `FII buying ↑ ${fiiChange.toFixed(1)}%`, type: "bullish" });
+      } else if (fiiChange < -2) {
+        signals.push({ label: `FII selling ↓ ${Math.abs(fiiChange).toFixed(1)}%`, type: "warning" });
+      }
+    }
+
+    // DII changes
+    if (latestSH.diis != null && prevSH.diis != null) {
+      const diiChange = latestSH.diis - prevSH.diis;
+      if (diiChange > 2) {
+        signals.push({ label: `DII accumulating ↑ ${diiChange.toFixed(1)}%`, type: "bullish" });
+      }
+    }
+
+    // Multi-quarter promoter trend (check last 4 quarters)
+    if (shareholding.length >= 4) {
+      const last4 = shareholding.slice(-4);
+      const promoterDeclines = last4.filter((s: any, i: number) => 
+        i > 0 && s.promoters != null && last4[i-1].promoters != null && s.promoters < last4[i-1].promoters
+      ).length;
+      if (promoterDeclines >= 3) {
+        signals.push({ label: "Promoter declining 3+ qtrs", type: "bearish" });
+      }
+    }
   }
 
   // Sentiment from AI analysis
