@@ -306,6 +306,7 @@ export type Database = {
           id: string
           metrics: Json | null
           quarter: string
+          raw_ai_output: Json | null
           red_flags: Json | null
           stock_id: string
           summary: string | null
@@ -316,6 +317,7 @@ export type Database = {
           id?: string
           metrics?: Json | null
           quarter: string
+          raw_ai_output?: Json | null
           red_flags?: Json | null
           stock_id: string
           summary?: string | null
@@ -326,6 +328,7 @@ export type Database = {
           id?: string
           metrics?: Json | null
           quarter?: string
+          raw_ai_output?: Json | null
           red_flags?: Json | null
           stock_id?: string
           summary?: string | null
