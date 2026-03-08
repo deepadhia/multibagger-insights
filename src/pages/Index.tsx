@@ -173,13 +173,14 @@ const Index = () => {
     const now = new Date();
     const oneMonthAgo = new Date(now); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
     const threeMonthsAgo = new Date(now); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const oneYearAgo = new Date(now); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const twoYearsAgo = new Date(now); twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
     const threeYearsAgo = new Date(now); threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
 
     return stocks.map(stock => {
       const prices = allPrices.filter(p => p.stock_id === stock.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      if (prices.length === 0) return { stock, latestPrice: null, return1m: null, return3m: null, return1y: null, return2y: null, return3y: null, volumeSpike: false };
+      if (prices.length === 0) return { stock, latestPrice: null, return1m: null, return3m: null, return6m: null, return1y: null, return2y: null, return3y: null, volumeSpike: false };
       const latestPrice = prices[0].price;
       const latestVolume = (prices[0] as any).volume;
       const recentVolumes = prices.slice(1, 21).map(p => (p as any).volume).filter((v: any) => v != null && v > 0);
@@ -192,6 +193,7 @@ const Index = () => {
         stock, latestPrice,
         return1m: calcReturn(getPriceNearDate(prices as any, oneMonthAgo)),
         return3m: calcReturn(getPriceNearDate(prices as any, threeMonthsAgo)),
+        return6m: calcReturn(getPriceNearDate(prices as any, sixMonthsAgo)),
         return1y: calcReturn(getPriceNearDate(prices as any, oneYearAgo)),
         return2y: calcReturn(getPriceNearDate(prices as any, twoYearsAgo)),
         return3y: calcReturn(getPriceNearDate(prices as any, threeYearsAgo)),
