@@ -62,6 +62,10 @@ export default function TranscriptsPage() {
       toast({ title: "Select a stock", variant: "destructive" });
       return;
     }
+    if (!quarter.trim()) {
+      toast({ title: "Enter a quarter (e.g. Q4FY25)", variant: "destructive" });
+      return;
+    }
 
     const payload = parseJson(jsonInput);
     if (!payload) return;
