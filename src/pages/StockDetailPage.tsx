@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStock, useStockAnalysis, useStockCommitments } from "@/hooks/useStocks";
-import { useFinancialMetrics, useFinancialResults, useStockPrices, useShareholding } from "@/hooks/useFinancials";
+import { useFinancialMetrics, useFinancialResults, useStockPrices, useShareholding, usePeerComparison } from "@/hooks/useFinancials";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
