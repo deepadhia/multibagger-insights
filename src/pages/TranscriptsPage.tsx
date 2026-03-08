@@ -36,6 +36,7 @@ export default function TranscriptsPage() {
 
   const [stockId, setStockId] = useState("");
   const [jsonInput, setJsonInput] = useState("");
+  const [quarter, setQuarter] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ snapshots: number; promisesUpdated: number; promisesCreated: number } | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
