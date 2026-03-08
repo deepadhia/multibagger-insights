@@ -18,6 +18,7 @@ interface Props {
 
 export function CopyGeminiPrompt({ stock }: Props) {
   const { data: promises } = useManagementPromises(stock.id);
+  const { data: snapshots } = useQuarterlySnapshots(stock.id);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
