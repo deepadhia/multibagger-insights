@@ -172,6 +172,16 @@ export default function StocksPage() {
               {refreshingFinancials ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               {refreshingFinancials ? "Refreshing..." : "Refresh Financials"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBackfillPrices}
+              disabled={backfilling || !stocks?.length}
+              className="font-mono"
+            >
+              {backfilling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {backfilling ? "Backfilling..." : "Backfill 1Y Prices"}
+            </Button>
             <AddStockDialog />
           </div>
         </div>
