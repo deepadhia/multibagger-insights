@@ -3,14 +3,16 @@ import { StatsCard } from "@/components/StatsCard";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
 import { useStocks, useAllAnalysis } from "@/hooks/useStocks";
-import { BarChart3, TrendingUp, FileText, Target, Activity, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { BarChart3, TrendingUp, FileText, Target, Activity, ArrowUpRight, ArrowDownRight, RefreshCw, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 function useAllPrices() {
   return useQuery({
@@ -19,6 +21,20 @@ function useAllPrices() {
       const { data, error } = await supabase
         .from("prices")
         .select("stock_id, date, price")
+        .order("date", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+function useSectorIndices() {
+  return useQuery({
+    queryKey: ["sector-indices"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sector_indices")
+        .select("*")
         .order("date", { ascending: false });
       if (error) throw error;
       return data;
