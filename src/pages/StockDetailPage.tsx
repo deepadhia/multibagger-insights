@@ -144,7 +144,7 @@ export default function StockDetailPage() {
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
 
   // Multibagger signal detection
-  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || [], shareholding || []);
+  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || [], shareholding || [], promises || [], snapshots || []);
 
   // Chart data
   const sentimentData = analyses?.map(a => ({
