@@ -20,6 +20,70 @@ function formatDate(d: Date): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+// Indian FY quarter detection from filing date
+// Results are typically filed 1-2 months after quarter end
+// Q1: Apr-Jun (filed Jul-Aug), Q2: Jul-Sep (filed Oct-Nov), Q3: Oct-Dec (filed Jan-Feb), Q4: Jan-Mar (filed Apr-May)
+function detectQuarter(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const month = d.getMonth() + 1; // 1-12
+  const year = d.getFullYear();
+
+  // Map filing month to the quarter whose results are being discussed
+  if (month >= 1 && month <= 2) {
+    // Jan-Feb → Q3 results (Oct-Dec), FY ends Mar of same year
+    return `Q3 FY${String(year).slice(2)}`;
+  } else if (month >= 4 && month <= 5) {
+    // Apr-May → Q4 results (Jan-Mar), FY just ended
+    return `Q4 FY${String(year).slice(2)}`;
+  } else if (month >= 7 && month <= 8) {
+    // Jul-Aug → Q1 results (Apr-Jun), FY ends Mar next year
+    return `Q1 FY${String(year + 1).slice(2)}`;
+  } else if (month >= 10 && month <= 11) {
+    // Oct-Nov → Q2 results (Jul-Sep)
+    return `Q2 FY${String(year + 1).slice(2)}`;
+  } else if (month === 3) {
+    // March could be Q3 late filing
+    return `Q3 FY${String(year).slice(2)}`;
+  } else if (month === 6) {
+    // June could be Q4 late filing
+    return `Q4 FY${String(year).slice(2)}`;
+  } else if (month === 9) {
+    return `Q1 FY${String(year + 1).slice(2)}`;
+  } else {
+    // Dec
+    return `Q2 FY${String(year + 1).slice(2)}`;
+  }
+}
+
+// Detect type from headline
+function detectType(headline: string): string {
+  const h = headline.toLowerCase();
+  if (h.includes("transcript") || h.includes("concall") || h.includes("con call") || h.includes("conference call")) {
+    return "concall_transcript";
+  }
+  if (h.includes("earnings call")) {
+    return "earnings";
+  }
+  if (h.includes("investor presentation") || h.includes("presentation")) {
+    return "presentation";
+  }
+  if (h.includes("analyst meet")) {
+    return "analyst_meet";
+  }
+  return "transcript";
+}
+
+type LinkItem = {
+  title: string;
+  date: string;
+  source: string;
+  url: string;
+  type: string;
+  quarter: string;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -31,18 +95,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    type LinkItem = {
-      title: string;
-      date: string;
-      source: string;
-      url: string;
-      type: string;
-    };
-
     const transcripts: LinkItem[] = [];
     const orderAnnouncements: LinkItem[] = [];
 
-    // Keywords that indicate the filing is NOT a transcript
     const EXCLUDE_KEYWORDS = [
       "intimation", "prior intimation", "regulation 30", "regulation 33",
       "board meeting", "outcome of board", "compliance certificate",
@@ -54,21 +109,23 @@ Deno.serve(async (req) => {
       "scrutinizer report", "annual report", "notice of",
     ];
 
-    // Keywords for new order wins
     const ORDER_KEYWORDS = [
       "new order", "order win", "order received", "order bagged",
       "contract awarded", "letter of intent", "loi received",
       "work order", "purchase order", "order book",
     ];
 
-    // === SOURCE 1: BSE Corporate Announcements ===
+    const TRANSCRIPT_KEYWORDS = [
+      "transcript", "concall", "con call", "conference call",
+      "earnings call", "analyst meet", "investor presentation",
+    ];
+
     const toDate = new Date();
     const fromDate = new Date();
     fromDate.setFullYear(fromDate.getFullYear() - 1);
 
     const bseSearchTerms = [ticker];
     if (company_name) {
-      // Use first word of company name for broader search
       const firstWord = company_name.split(/\s+/)[0];
       if (firstWord.length > 2 && firstWord.toUpperCase() !== ticker.toUpperCase()) {
         bseSearchTerms.push(firstWord);
@@ -87,12 +144,15 @@ Deno.serve(async (req) => {
           if (!isNaN(d.getTime())) dateStr = d.toISOString().split("T")[0];
         } catch { /* skip */ }
 
+        const quarter = detectQuarter(dateStr);
+
         const buildLink = (title: string, type: string): LinkItem => ({
           title: title || "Filing",
           date: dateStr,
           source: "BSE",
           url: attachUrl.startsWith("http") ? attachUrl : `https://www.bseindia.com/xml-data/corpfiling/AttachLive/${attachUrl}`,
           type,
+          quarter,
         });
 
         // Check for new order announcements
@@ -102,38 +162,24 @@ Deno.serve(async (req) => {
         }
 
         // Filter for transcript/concall related filings
-        const isTranscript =
-          headline.includes("transcript") ||
-          headline.includes("concall") ||
-          headline.includes("con call") ||
-          headline.includes("conference call") ||
-          headline.includes("earnings call") ||
-          headline.includes("analyst meet") ||
-          headline.includes("investor presentation");
-
+        const isTranscript = TRANSCRIPT_KEYWORDS.some(k => headline.includes(k));
         if (!isTranscript) continue;
 
-        // Exclude intimations & generic notices
+        // Exclude intimations & generic notices (but keep if explicitly "transcript")
         const isExcluded = EXCLUDE_KEYWORDS.some(k => headline.includes(k));
         if (isExcluded && !headline.includes("transcript")) continue;
 
-        transcripts.push(buildLink(
-          item.NEWSSUB || "Transcript",
-          headline.includes("presentation") ? "presentation" : "transcript",
-        ));
+        transcripts.push(buildLink(item.NEWSSUB || "Transcript", detectType(headline)));
       }
     };
 
     for (const searchTerm of bseSearchTerms) {
-      // Search both Result and Board Meeting/Corp Action categories
       const categories = ["Result", "Corp. Action"];
       for (const cat of categories) {
         try {
           const bseUrl = `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strCat=${encodeURIComponent(cat)}&strPrevDate=${formatDate(fromDate)}&strScrip=${encodeURIComponent(searchTerm)}&strSearch=P&strToDate=${formatDate(toDate)}&strType=C`;
-
           console.log(`Searching BSE [${cat}] for: ${searchTerm}`);
           const bseResp = await fetch(bseUrl, { headers: BSE_HEADERS });
-
           if (bseResp.ok) {
             const data = await bseResp.json();
             const table = data?.Table || [];
@@ -148,7 +194,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // === SOURCE 2: Screener.in (scrape document links) ===
+    // === SOURCE 2: Screener.in ===
     const sessionId = Deno.env.get("SCREENER_SESSION_ID");
     const csrfToken = Deno.env.get("SCREENER_CSRF_TOKEN");
     const slug = screener_slug || ticker;
@@ -167,26 +213,27 @@ Deno.serve(async (req) => {
 
         if (resp.ok) {
           const html = await resp.text();
-
-          // Extract concall/transcript links from the documents section
-          // Screener typically has links like: <a href="...">Concall Transcript Q3 FY26</a>
           const linkPattern = /<a[^>]*href="([^"]*)"[^>]*>([^<]*(?:transcript|concall|con call|conference call|earnings call|investor presentation)[^<]*)<\/a>/gi;
           let match;
           while ((match = linkPattern.exec(html)) !== null) {
             const url = match[1];
             const title = match[2].trim();
             if (url && title) {
+              // Try to extract quarter from title (e.g., "Concall Transcript Q3 FY26")
+              const qMatch = title.match(/Q([1-4])\s*FY\s*(\d{2,4})/i);
+              const quarter = qMatch ? `Q${qMatch[1]} FY${qMatch[2].slice(-2)}` : "";
+
               transcripts.push({
                 title,
                 date: "",
                 source: "Screener",
                 url: url.startsWith("http") ? url : `https://www.screener.in${url}`,
-                type: title.toLowerCase().includes("presentation") ? "presentation" : "transcript",
+                type: detectType(title),
+                quarter,
               });
             }
           }
 
-          // Also look for document links in the "Documents" section
           const docPattern = /class="documents"[\s\S]*?<\/section>/gi;
           const docMatch = docPattern.exec(html);
           if (docMatch) {
@@ -200,20 +247,21 @@ Deno.serve(async (req) => {
                 (title.includes("concall") || title.includes("transcript") || title.includes("conference")) &&
                 !transcripts.some(t => t.url === url)
               ) {
+                const qMatch = dlMatch[2].match(/Q([1-4])\s*FY\s*(\d{2,4})/i);
+                const quarter = qMatch ? `Q${qMatch[1]} FY${qMatch[2].slice(-2)}` : "";
                 transcripts.push({
                   title: dlMatch[2].trim(),
                   date: "",
                   source: "Screener",
                   url: url.startsWith("http") ? url : `https://www.screener.in${url}`,
-                  type: "transcript",
+                  type: "concall_transcript",
+                  quarter,
                 });
               }
             }
           }
-
           console.log(`Found ${transcripts.filter(t => t.source === "Screener").length} links from Screener`);
         } else {
-          const body = await resp.text();
           console.log(`Screener fetch failed: ${resp.status}`);
         }
       } catch (e) {
@@ -221,18 +269,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Deduplicate by URL
+    // Deduplicate
     const seen = new Set<string>();
     const unique = transcripts.filter(t => {
       if (seen.has(t.url)) return false;
       seen.add(t.url);
       return true;
     });
-
-    // Sort by date descending
     unique.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
-    // Deduplicate orders
     const seenOrders = new Set<string>();
     const uniqueOrders = orderAnnouncements.filter(t => {
       if (seenOrders.has(t.url)) return false;
