@@ -344,3 +344,47 @@ export function SnapshotsTab({ stockId }: Props) {
     </div>
   );
 }
+
+// ═══ Helper functions for QoQ comparison ═══
+
+function extractValue(val: string): string {
+  const s = String(val);
+  const parenIdx = s.indexOf("(");
+  return parenIdx > 0 ? s.slice(0, parenIdx).trim() : s;
+}
+
+function extractNumber(val: string): number | null {
+  const clean = extractValue(val);
+  // Try to extract a number from strings like "11% YoY", "₹266 Cr", "30%", "15%"
+  const match = clean.match(/-?[\d,.]+/);
+  if (!match) return null;
+  return parseFloat(match[0].replace(/,/g, ""));
+}
+
+function getTrend(current: string, previous: string): "up" | "down" | "flat" | null {
+  const curr = extractNumber(current);
+  const prev = extractNumber(previous);
+  if (curr === null || prev === null) return null;
+  if (curr > prev) return "up";
+  if (curr < prev) return "down";
+  return "flat";
+}
+
+function buildQoQComparison(snapshots: any[]) {
+  // snapshots are ordered by created_at DESC, so newest first
+  const quarters = snapshots.map(s => s.quarter);
+  const values: Record<string, Record<string, string>> = {};
+  const allKeys = new Set<string>();
+
+  for (const snap of snapshots) {
+    const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, string>;
+    values[snap.quarter] = metrics;
+    Object.keys(metrics).forEach(k => allKeys.add(k));
+  }
+
+  return {
+    quarters,
+    metricKeys: Array.from(allKeys),
+    values,
+  };
+}
