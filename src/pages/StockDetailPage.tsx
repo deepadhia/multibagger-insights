@@ -15,6 +15,7 @@ import { SnapshotsTab } from "@/components/SnapshotsTab";
 import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
 import { ImportGeminiResponse } from "@/components/ImportGeminiResponse";
 import { MasterPromptEditor } from "@/components/MasterPromptEditor";
+import { TranscriptDownloader } from "@/components/TranscriptDownloader";
 import { DealsTab } from "@/components/DealsTab";
 import { ThesisScore } from "@/components/ThesisScore";
 import { ThesisTimeline } from "@/components/ThesisTimeline";
@@ -294,6 +295,7 @@ export default function StockDetailPage() {
           <InvestmentThesisEditor stockId={stock.id} thesis={stock.investment_thesis} />
           <MasterPromptEditor stockId={stock.id} trackingDirectives={stock.tracking_directives} metricKeys={stock.metric_keys} />
         </div>
+        <TranscriptDownloader ticker={stock.ticker} companyName={stock.company_name} screenerSlug={stock.screener_slug} />
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4">
           {stock.buy_price && (
             <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
