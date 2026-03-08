@@ -223,6 +223,22 @@ export default function StocksPage() {
                             {stock.category}
                           </Badge>
                         </td>
+                        <td className="p-3 text-center">
+                          {(stock as any).next_results_date ? (
+                            <Badge
+                              variant="outline"
+                              className={`font-mono text-[10px] ${
+                                new Date((stock as any).next_results_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                  ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {new Date((stock as any).next_results_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </td>
                         <td className="p-3 text-right">{stock.buy_price ? `₹${stock.buy_price}` : "—"}</td>
                         <td className="p-3 text-center">
                           {analysis?.sentiment_score ? <SentimentBadge score={analysis.sentiment_score} /> : "—"}
