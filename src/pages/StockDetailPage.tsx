@@ -215,6 +215,7 @@ export default function StockDetailPage() {
               <span className="ml-1">Financials</span>
             </Button>
             <CopyGeminiPrompt stock={stock} />
+            <ImportGeminiResponse stockId={stock.id} ticker={stock.ticker} />
           </div>
         </div>
 
