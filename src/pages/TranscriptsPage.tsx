@@ -114,7 +114,7 @@ export default function TranscriptsPage() {
         }));
 
         const { error: promiseError } = await supabase
-          .from("management_promises")
+          .from("management_promises" as any)
           .insert(rows);
         if (promiseError) throw promiseError;
         promisesCreated = rows.length;
