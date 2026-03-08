@@ -12,6 +12,7 @@ import { ToneBadge } from "@/components/ToneBadge";
 import { InvestmentThesisEditor } from "@/components/InvestmentThesisEditor";
 import { PromisesTab } from "@/components/PromisesTab";
 import { SnapshotsTab } from "@/components/SnapshotsTab";
+import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
@@ -211,6 +212,7 @@ export default function StockDetailPage() {
               {fetchingFinancials ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
               <span className="ml-1">Financials</span>
             </Button>
+            <CopyGeminiPrompt stock={stock} />
           </div>
         </div>
 
