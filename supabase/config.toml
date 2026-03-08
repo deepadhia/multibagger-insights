@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.fetch-financials]
 verify_jwt = false
+
+[functions.refresh-all-financials]
+verify_jwt = false
