@@ -212,6 +212,7 @@ export default function StockDetailPage() {
               {fetchingFinancials ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
               <span className="ml-1">Financials</span>
             </Button>
+            <CopyGeminiPrompt stock={stock} />
           </div>
         </div>
 
