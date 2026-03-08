@@ -1,3 +1,4 @@
+import React from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStocks } from "@/hooks/useStocks";
 import { supabase } from "@/integrations/supabase/client";
