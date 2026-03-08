@@ -82,7 +82,7 @@ export default function TranscriptsPage() {
         .from("quarterly_snapshots" as any)
         .upsert({
           stock_id: stockId,
-          quarter: snap.quarter,
+          quarter: activeQuarter,
           summary: snap.summary || null,
           dodged_questions: snap.dodged_questions || [],
           red_flags: snap.red_flags || [],
