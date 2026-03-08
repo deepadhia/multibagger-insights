@@ -100,7 +100,7 @@ export default function TranscriptsPage() {
               .from("management_promises" as any)
               .update({
                 status: update.new_status,
-                resolved_in_quarter: snap.quarter,
+                resolved_in_quarter: activeQuarter,
               })
               .eq("id", update.promise_id);
             if (!error) promisesUpdated++;
