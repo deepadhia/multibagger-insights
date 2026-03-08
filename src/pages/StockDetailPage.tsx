@@ -279,6 +279,12 @@ export default function StockDetailPage() {
             <TabsTrigger value="commitments" className="font-mono text-xs gap-1.5">
               <Shield className="h-3 w-3" /> Commitments
             </TabsTrigger>
+            <TabsTrigger value="promises" className="font-mono text-xs gap-1.5">
+              <Target className="h-3 w-3" /> Promises
+            </TabsTrigger>
+            <TabsTrigger value="snapshots" className="font-mono text-xs gap-1.5">
+              <FileText className="h-3 w-3" /> Snapshots
+            </TabsTrigger>
             <TabsTrigger value="peers" className="font-mono text-xs gap-1.5">
               <Users className="h-3 w-3" /> Peers
             </TabsTrigger>
