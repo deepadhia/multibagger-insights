@@ -160,9 +160,16 @@ export function SnapshotsTab({ stockId }: Props) {
       {snapshots.map((snap) => {
         const dodged = (Array.isArray(snap.dodged_questions) ? snap.dodged_questions : []) as string[];
         const flags = (Array.isArray(snap.red_flags) ? snap.red_flags : []) as string[];
-        const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, string>;
+        const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, unknown>;
         const isEditing = editingId === snap.id;
         const isOpen = effectiveExpanded === snap.id;
+        const snapAny = snap as any;
+        const rawOutput = snap.raw_ai_output as any;
+        const driftStatus = snapAny.thesis_drift_status || rawOutput?.snapshot?.thesis_drift?.status || null;
+        const driftReason = rawOutput?.snapshot?.thesis_drift?.reason || null;
+        const signals = rawOutput?.signals as { bullish?: string[]; warnings?: string[]; bearish?: string[] } | undefined;
+        const confidenceScore = snapAny.confidence_score ?? rawOutput?.snapshot?.confidence_score ?? null;
+        const thesisMomentum = snapAny.thesis_momentum || rawOutput?.snapshot?.thesis_momentum || null;
 
         return (
           <Collapsible
