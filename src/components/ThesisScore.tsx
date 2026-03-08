@@ -42,7 +42,12 @@ export function ThesisScore({ signals }: ThesisScoreProps) {
             <Icon className={`h-3.5 w-3.5 ${verdict.color}`} />
             <span className={`font-mono text-xs font-semibold ${verdict.color}`}>{verdict.label}</span>
           </div>
-          <Progress value={score} className="h-1.5 bg-muted" />
+          <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full transition-all ${verdict.progressColor}`}
+              style={{ width: `${score}%` }}
+            />
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-3 mt-2 font-mono text-[10px]">
