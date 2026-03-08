@@ -486,7 +486,11 @@ export function SnapshotsTab({ stockId }: Props) {
 
 // ═══ Helper functions for QoQ comparison ═══
 
-function extractValue(val: string): string {
+function extractValue(val: unknown): string {
+  // Handle nested { value, evidence } objects
+  if (val && typeof val === "object" && "value" in (val as any)) {
+    return String((val as any).value);
+  }
   const s = String(val);
   const parenIdx = s.indexOf("(");
   return parenIdx > 0 ? s.slice(0, parenIdx).trim() : s;
