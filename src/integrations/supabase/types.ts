@@ -18,10 +18,14 @@ export type Database = {
         Row: {
           created_at: string
           debt_equity: number | null
+          eps: number | null
           free_cash_flow: number | null
           id: string
+          net_profit: number | null
+          opm: number | null
           profit_growth: number | null
           promoter_holding: number | null
+          revenue: number | null
           revenue_growth: number | null
           roce: number | null
           roe: number | null
@@ -31,10 +35,14 @@ export type Database = {
         Insert: {
           created_at?: string
           debt_equity?: number | null
+          eps?: number | null
           free_cash_flow?: number | null
           id?: string
+          net_profit?: number | null
+          opm?: number | null
           profit_growth?: number | null
           promoter_holding?: number | null
+          revenue?: number | null
           revenue_growth?: number | null
           roce?: number | null
           roe?: number | null
@@ -44,10 +52,14 @@ export type Database = {
         Update: {
           created_at?: string
           debt_equity?: number | null
+          eps?: number | null
           free_cash_flow?: number | null
           id?: string
+          net_profit?: number | null
+          opm?: number | null
           profit_growth?: number | null
           promoter_holding?: number | null
+          revenue?: number | null
           revenue_growth?: number | null
           roce?: number | null
           roe?: number | null
