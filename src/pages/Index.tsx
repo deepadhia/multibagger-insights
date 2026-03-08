@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import {
   BarChart3, TrendingUp, TrendingDown, FileText, Target, Activity,
