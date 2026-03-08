@@ -1,0 +1,1 @@
+ALTER TABLE public.quarterly_snapshots ADD CONSTRAINT quarterly_snapshots_stock_quarter_unique UNIQUE (stock_id, quarter);
