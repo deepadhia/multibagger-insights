@@ -267,37 +267,53 @@ const Index = () => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Sector Performance */}
-          {sectorPerformance.length > 0 && (
-            <Card className="p-4 bg-card border-border card-glow">
-              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">
-                Sector Performance
+          {/* Nifty Sector Index Performance */}
+          <Card className="p-4 bg-card border-border card-glow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Nifty Sector Indices
               </h3>
-              <div className="space-y-2">
-                {sectorPerformance.map(({ sector, avg1m, avg3m, avg1y }) => (
-                  <div key={sector} className="p-3 bg-muted rounded border border-border/50 flex items-center justify-between">
-                    <div>
-                      <span className="font-mono text-sm font-semibold text-foreground">{sector}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefreshSectorIndices}
+                disabled={refreshingSectors}
+                className="font-mono text-xs h-7 px-2"
+              >
+                {refreshingSectors ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              </Button>
+            </div>
+            {niftySectorPerformance.length > 0 ? (
+              <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+                {niftySectorPerformance.map(({ name, latestPrice, return1m, return3m, return1y }) => (
+                  <div key={name} className="p-2.5 bg-muted rounded border border-border/50 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <span className="font-mono text-xs font-semibold text-foreground truncate block">{name}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{latestPrice?.toLocaleString()}</span>
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-5 shrink-0">
                       <div className="text-center">
                         <p className="text-[9px] text-muted-foreground font-mono mb-0.5">1M</p>
-                        <ReturnBadge value={avg1m} />
+                        <ReturnBadge value={return1m} />
                       </div>
                       <div className="text-center">
                         <p className="text-[9px] text-muted-foreground font-mono mb-0.5">3M</p>
-                        <ReturnBadge value={avg3m} />
+                        <ReturnBadge value={return3m} />
                       </div>
                       <div className="text-center">
                         <p className="text-[9px] text-muted-foreground font-mono mb-0.5">1Y</p>
-                        <ReturnBadge value={avg1y} />
+                        <ReturnBadge value={return1y} />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </Card>
-          )}
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-muted-foreground font-mono text-sm">
+                Click refresh to fetch Nifty sector data
+              </div>
+            )}
+          </Card>
 
           {/* Sentiment Chart */}
           <Card className="p-4 bg-card border-border card-glow">
