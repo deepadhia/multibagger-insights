@@ -161,6 +161,47 @@ export type Database = {
           },
         ]
       }
+      management_promises: {
+        Row: {
+          created_at: string
+          id: string
+          made_in_quarter: string
+          promise_text: string
+          resolved_in_quarter: string | null
+          status: string
+          stock_id: string
+          target_deadline: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          made_in_quarter: string
+          promise_text: string
+          resolved_in_quarter?: string | null
+          status?: string
+          stock_id: string
+          target_deadline?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          made_in_quarter?: string
+          promise_text?: string
+          resolved_in_quarter?: string | null
+          status?: string
+          stock_id?: string
+          target_deadline?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "management_promises_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       peer_comparison: {
         Row: {
           cmp: number | null
@@ -251,6 +292,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "prices_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quarterly_snapshots: {
+        Row: {
+          created_at: string
+          dodged_questions: Json | null
+          id: string
+          metrics: Json | null
+          quarter: string
+          red_flags: Json | null
+          stock_id: string
+          summary: string | null
+        }
+        Insert: {
+          created_at?: string
+          dodged_questions?: Json | null
+          id?: string
+          metrics?: Json | null
+          quarter: string
+          red_flags?: Json | null
+          stock_id: string
+          summary?: string | null
+        }
+        Update: {
+          created_at?: string
+          dodged_questions?: Json | null
+          id?: string
+          metrics?: Json | null
+          quarter?: string
+          red_flags?: Json | null
+          stock_id?: string
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quarterly_snapshots_stock_id_fkey"
             columns: ["stock_id"]
             isOneToOne: false
             referencedRelation: "stocks"
