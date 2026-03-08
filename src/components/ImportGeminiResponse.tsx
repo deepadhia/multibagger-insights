@@ -317,7 +317,20 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
             </div>
 
             <div className="space-y-2 font-mono text-xs">
-              <div>
+              {parsed.thesis_status && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Thesis Status:</span>{" "}
+                  <Badge variant="outline" className={`text-[10px] ${
+                    parsed.thesis_status.status === "strengthening" ? "border-terminal-green text-terminal-green" :
+                    parsed.thesis_status.status === "weakening" ? "border-terminal-amber text-terminal-amber" :
+                    parsed.thesis_status.status === "broken" ? "border-terminal-red text-terminal-red" :
+                    "border-muted-foreground"
+                  }`}>
+                    {parsed.thesis_status.status.toUpperCase()}
+                  </Badge>
+                  <span className="text-muted-foreground text-[10px] truncate max-w-[300px]">{parsed.thesis_status.reason}</span>
+                </div>
+              )}
                 <span className="text-muted-foreground">Quarter:</span>{" "}
                 <Badge variant="outline" className="text-[10px]">{effectiveQuarter}</Badge>
                 {quarterOverride && parsed.quarterly_snapshot.quarter && quarterOverride !== parsed.quarterly_snapshot.quarter && (
