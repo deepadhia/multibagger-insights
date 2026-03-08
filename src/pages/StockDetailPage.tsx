@@ -257,6 +257,15 @@ export default function StockDetailPage() {
           </div>
         )}
 
+        {/* ── THESIS DRIFT ALERT ── */}
+        {(() => {
+          const latestSnap = snapshots?.[0] as any;
+          const rawOut = latestSnap?.raw_ai_output as any;
+          const driftStatus = latestSnap?.thesis_drift_status || rawOut?.snapshot?.thesis_drift?.status || null;
+          const driftReason = rawOut?.snapshot?.thesis_drift?.reason || null;
+          return <ThesisDriftAlert driftStatus={driftStatus} driftReason={driftReason} />;
+        })()}
+
         {/* ── THESIS SCORE + MULTIBAGGER SIGNALS ── */}
         {signals.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-4">
