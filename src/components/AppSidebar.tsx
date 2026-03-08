@@ -4,6 +4,7 @@ import {
   FileText,
   TrendingUp,
   Activity,
+  CalendarClock,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -22,6 +23,7 @@ import {
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Stocks", url: "/stocks", icon: List },
+  { title: "Calendar", url: "/calendar", icon: CalendarClock },
   { title: "Earnings", url: "/transcripts", icon: FileText },
   { title: "Signals", url: "/signals", icon: TrendingUp },
 ];

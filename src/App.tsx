@@ -8,6 +8,7 @@ import StocksPage from "./pages/StocksPage";
 import StockDetailPage from "./pages/StockDetailPage";
 import TranscriptsPage from "./pages/TranscriptsPage";
 import SignalsPage from "./pages/SignalsPage";
+import CalendarPage from "./pages/CalendarPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/stocks" element={<StocksPage />} />
           <Route path="/stocks/:id" element={<StockDetailPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/transcripts" element={<TranscriptsPage />} />
           <Route path="/signals" element={<SignalsPage />} />
           <Route path="*" element={<NotFound />} />
