@@ -195,6 +195,35 @@ export function SnapshotsTab({ stockId }: Props) {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {snap.thesis_status && (
+                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                        snap.thesis_status === "strengthening" ? "text-terminal-green border-terminal-green/30" :
+                        snap.thesis_status === "weakening" ? "text-terminal-amber border-terminal-amber/30" :
+                        snap.thesis_status === "broken" ? "text-terminal-red border-terminal-red/30" :
+                        "text-muted-foreground"
+                      }`}>
+                        {snap.thesis_status}
+                      </Badge>
+                    )}
+                    {confidenceScore != null && (
+                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                        confidenceScore >= 80 ? "text-terminal-green border-terminal-green/30" :
+                        confidenceScore >= 60 ? "text-foreground" :
+                        confidenceScore >= 40 ? "text-terminal-amber border-terminal-amber/30" :
+                        "text-terminal-red border-terminal-red/30"
+                      }`}>
+                        Score: {confidenceScore}
+                      </Badge>
+                    )}
+                    {thesisMomentum && (
+                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                        thesisMomentum === "improving" ? "text-terminal-green border-terminal-green/30" :
+                        thesisMomentum === "deteriorating" ? "text-terminal-red border-terminal-red/30" :
+                        "text-muted-foreground"
+                      }`}>
+                        {thesisMomentum}
+                      </Badge>
+                    )}
                     {flags.length > 0 && (
                       <Badge variant="destructive" className="font-mono text-[10px] gap-1">
                         <AlertTriangle className="h-2.5 w-2.5" />
