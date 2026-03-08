@@ -121,8 +121,8 @@ Deno.serve(async (req) => {
             exchange: 'NSE',
             remarks: null,
           }));
-          const { error } = await supabase.from('bulk_deals').insert(rows);
-          if (error) console.error('Block deals insert error:', error);
+          const { error } = await supabase.from('bulk_deals').upsert(rows, { onConflict: 'stock_id,deal_date,client_name,deal_type' });
+          if (error) console.error('Block deals upsert error:', error);
           else results.block_deals = rows.length;
         }
       } else {
