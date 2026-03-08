@@ -20,6 +20,7 @@ export default function StocksPage() {
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [refreshingFinancials, setRefreshingFinancials] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [fetchingResults, setFetchingResults] = useState(false);
 
   const handleRefreshAllPrices = async () => {
     if (!stocks?.length) return;
@@ -106,6 +107,22 @@ export default function StocksPage() {
     setBackfilling(false);
   };
 
+  const handleFetchResultsDates = async () => {
+    setFetchingResults(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-results-calendar");
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      toast({
+        title: "Results dates updated",
+        description: data?.message || `${data?.updated || 0} stocks updated`,
+      });
+    } catch (e: any) {
+      toast({ title: "Failed to fetch results dates", description: e.message, variant: "destructive" });
+    }
+    setFetchingResults(false);
+  };
+
   // Fetch latest analysis per stock
   const { data: latestAnalysis } = useQuery({
     queryKey: ["latest-analysis"],
@@ -181,6 +198,16 @@ export default function StocksPage() {
             >
               {backfilling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               {backfilling ? "Backfilling..." : "Backfill 3Y Prices"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchResultsDates}
+              disabled={fetchingResults}
+              className="font-mono"
+            >
+              {fetchingResults ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {fetchingResults ? "Fetching..." : "Fetch Results Dates"}
             </Button>
             <AddStockDialog />
           </div>

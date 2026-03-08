@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.fetch-sector-indices]
 verify_jwt = false
+
+[functions.fetch-results-calendar]
+verify_jwt = false
