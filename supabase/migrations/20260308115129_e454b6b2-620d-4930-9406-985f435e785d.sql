@@ -1,0 +1,2 @@
+ALTER TABLE public.bulk_deals ADD CONSTRAINT bulk_deals_unique_key UNIQUE (stock_id, deal_date, client_name, deal_type);
+ALTER TABLE public.insider_trades ADD CONSTRAINT insider_trades_unique_key UNIQUE (stock_id, trade_date, person_name, trade_type);
