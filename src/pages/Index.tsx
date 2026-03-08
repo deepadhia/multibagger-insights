@@ -53,6 +53,8 @@ const ReturnBadge = ({ value }: { value: number | null }) => {
   );
 };
 
+const MAX_DATE_GAP_DAYS = 45;
+
 const Index = () => {
   const { data: stocks } = useStocks();
   const { data: analyses } = useAllAnalysis();
@@ -73,6 +75,20 @@ const Index = () => {
     : "—";
 
   const latestAnalyses = analyses?.slice(0, 5) || [];
+
+  const getPriceNearDate = (series: Array<{ date: string; price: number }>, targetDate: Date): number | null => {
+    const targetTs = targetDate.getTime();
+
+    for (const item of series) {
+      const itemTs = new Date(item.date).getTime();
+      if (itemTs <= targetTs) {
+        const diffDays = (targetTs - itemTs) / (1000 * 60 * 60 * 24);
+        return diffDays <= MAX_DATE_GAP_DAYS ? item.price : null;
+      }
+    }
+
+    return null;
+  };
 
   // Calculate returns for each stock
   const stockReturns = useMemo(() => {
@@ -100,13 +116,6 @@ const Index = () => {
       const avgVolume = recentVolumes.length > 0 ? recentVolumes.reduce((s: number, v: number) => s + v, 0) / recentVolumes.length : 0;
       const volumeSpike = latestVolume && avgVolume > 0 && latestVolume > avgVolume * 2;
 
-      const findClosestPrice = (targetDate: Date) => {
-        for (const p of prices) {
-          if (new Date(p.date) <= targetDate) return p.price;
-        }
-        return prices[prices.length - 1]?.price;
-      };
-
       const calcReturn = (old: number | null | undefined) =>
         old && old > 0 ? Math.round(((latestPrice - old) / old) * 1000) / 10 : null;
 
@@ -118,11 +127,11 @@ const Index = () => {
       return {
         stock,
         latestPrice,
-        return1m: calcReturn(findClosestPrice(oneMonthAgo)),
-        return3m: calcReturn(findClosestPrice(threeMonthsAgo)),
-        return1y: calcReturn(findClosestPrice(oneYearAgo)),
-        return2y: calcReturn(findClosestPrice(twoYearsAgo)),
-        return3y: calcReturn(findClosestPrice(threeYearsAgo)),
+        return1m: calcReturn(getPriceNearDate(prices as Array<{ date: string; price: number }>, oneMonthAgo)),
+        return3m: calcReturn(getPriceNearDate(prices as Array<{ date: string; price: number }>, threeMonthsAgo)),
+        return1y: calcReturn(getPriceNearDate(prices as Array<{ date: string; price: number }>, oneYearAgo)),
+        return2y: calcReturn(getPriceNearDate(prices as Array<{ date: string; price: number }>, twoYearsAgo)),
+        return3y: calcReturn(getPriceNearDate(prices as Array<{ date: string; price: number }>, threeYearsAgo)),
         volumeSpike: volumeSpike || suddenMove,
       };
     }).sort((a, b) => (b.return1m ?? -999) - (a.return1m ?? -999));
@@ -150,14 +159,7 @@ const Index = () => {
       const latest = prices[0];
       const latestPrice = latest.price;
 
-      const findClosest = (target: Date) => {
-        for (const p of prices) {
-          if (new Date(p.date) <= target) return p.price;
-        }
-        return prices[prices.length - 1]?.price;
-      };
-
-      const calc = (old: number | undefined) =>
+      const calc = (old: number | null | undefined) =>
         old && old > 0 ? Math.round(((latestPrice - old) / old) * 1000) / 10 : null;
 
       // Detect sudden move (>2% daily change)
@@ -169,11 +171,11 @@ const Index = () => {
         name: latest.index_name,
         sector: latest.sector,
         latestPrice,
-        return1m: calc(findClosest(oneMonthAgo)),
-        return3m: calc(findClosest(threeMonthsAgo)),
-        return1y: calc(findClosest(oneYearAgo)),
-        return2y: calc(findClosest(twoYearsAgo)),
-        return3y: calc(findClosest(threeYearsAgo)),
+        return1m: calc(getPriceNearDate(prices, oneMonthAgo)),
+        return3m: calc(getPriceNearDate(prices, threeMonthsAgo)),
+        return1y: calc(getPriceNearDate(prices, oneYearAgo)),
+        return2y: calc(getPriceNearDate(prices, twoYearsAgo)),
+        return3y: calc(getPriceNearDate(prices, threeYearsAgo)),
         suddenMove,
         dailyChange: Math.round(dailyChange * 10) / 10,
       };
@@ -221,7 +223,6 @@ const Index = () => {
           </p>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard title="Total Stocks" value={totalStocks} icon={BarChart3} subtitle={`${coreStocks} Core • ${starterStocks} Starter`} />
           <StatsCard title="Avg Sentiment" value={avgSentiment} icon={TrendingUp} trend={Number(avgSentiment) >= 7 ? "up" : Number(avgSentiment) >= 4 ? "neutral" : "down"} />
@@ -229,12 +230,9 @@ const Index = () => {
           <StatsCard title="Watchlist" value={watchlistStocks} icon={Target} />
         </div>
 
-        {/* Stock Returns Table */}
         {stockReturns.length > 0 && stockReturns.some(sr => sr.latestPrice) && (
           <Card className="p-4 bg-card border-border card-glow overflow-hidden">
-            <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">
-              Stock Returns
-            </h3>
+            <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">Stock Returns</h3>
             <div className="overflow-x-auto">
               <table className="w-full data-grid">
                 <thead>
@@ -252,11 +250,7 @@ const Index = () => {
                 </thead>
                 <tbody>
                   {stockReturns.map(({ stock, latestPrice, return1m, return3m, return1y, return2y, return3y, volumeSpike }) => (
-                    <tr
-                      key={stock.id}
-                      className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer ${volumeSpike ? "bg-terminal-amber/5 border-l-2 border-l-terminal-amber" : ""}`}
-                      onClick={() => navigate(`/stocks/${stock.id}`)}
-                    >
+                    <tr key={stock.id} className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer ${volumeSpike ? "bg-terminal-amber/5 border-l-2 border-l-terminal-amber" : ""}`} onClick={() => navigate(`/stocks/${stock.id}`)}>
                       <td className="p-2">
                         <div className="flex items-center gap-1.5">
                           {volumeSpike && <Zap className="h-3 w-3 text-terminal-amber shrink-0" />}
@@ -265,20 +259,14 @@ const Index = () => {
                         </div>
                       </td>
                       <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
-                      <td className="p-2 text-right font-mono text-foreground text-sm">
-                        {latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}
-                      </td>
+                      <td className="p-2 text-right font-mono text-foreground text-sm">{latestPrice ? `₹${Number(latestPrice).toLocaleString()}` : "—"}</td>
                       <td className="p-2 text-right"><ReturnBadge value={return1m} /></td>
                       <td className="p-2 text-right"><ReturnBadge value={return3m} /></td>
                       <td className="p-2 text-right"><ReturnBadge value={return1y} /></td>
                       <td className="p-2 text-right"><ReturnBadge value={return2y} /></td>
                       <td className="p-2 text-right"><ReturnBadge value={return3y} /></td>
                       <td className="p-2 text-center">
-                        <Badge variant="outline" className={`font-mono text-[10px] ${
-                          stock.category === "Core" ? "text-terminal-green border-terminal-green/30" :
-                          stock.category === "Starter" ? "text-terminal-cyan border-terminal-cyan/30" :
-                          "text-muted-foreground border-border"
-                        }`}>{stock.category}</Badge>
+                        <Badge variant="outline" className={`font-mono text-[10px] ${stock.category === "Core" ? "text-terminal-green border-terminal-green/30" : stock.category === "Starter" ? "text-terminal-cyan border-terminal-cyan/30" : "text-muted-foreground border-border"}`}>{stock.category}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -288,19 +276,10 @@ const Index = () => {
           </Card>
         )}
 
-        {/* Nifty Sector Index Performance — Full Width */}
         <Card className="p-4 bg-card border-border card-glow">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Nifty Sector Indices
-            </h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefreshSectorIndices}
-              disabled={refreshingSectors}
-              className="font-mono text-xs h-7 px-2"
-            >
+            <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Nifty Sector Indices</h3>
+            <Button variant="ghost" size="sm" onClick={handleRefreshSectorIndices} disabled={refreshingSectors} className="font-mono text-xs h-7 px-2">
               {refreshingSectors ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             </Button>
           </div>
@@ -325,11 +304,7 @@ const Index = () => {
                         <div className="flex items-center gap-1.5">
                           {suddenMove && <Zap className="h-3 w-3 text-terminal-amber shrink-0" />}
                           <span className="font-mono text-xs font-semibold text-foreground">{name}</span>
-                          {suddenMove && (
-                            <span className={`text-[9px] font-mono ${dailyChange >= 0 ? "text-terminal-green" : "text-terminal-red"}`}>
-                              ({dailyChange > 0 ? "+" : ""}{dailyChange}% today)
-                            </span>
-                          )}
+                          {suddenMove && <span className={`text-[9px] font-mono ${dailyChange >= 0 ? "text-terminal-green" : "text-terminal-red"}`}>({dailyChange > 0 ? "+" : ""}{dailyChange}% today)</span>}
                         </div>
                       </td>
                       <td className="p-2 text-right font-mono text-xs text-muted-foreground">{latestPrice?.toLocaleString()}</td>
@@ -344,17 +319,12 @@ const Index = () => {
               </table>
             </div>
           ) : (
-            <div className="h-[200px] flex items-center justify-center text-muted-foreground font-mono text-sm">
-              Click refresh to fetch Nifty sector data
-            </div>
+            <div className="h-[200px] flex items-center justify-center text-muted-foreground font-mono text-sm">Click refresh to fetch Nifty sector data</div>
           )}
         </Card>
 
-        {/* Sentiment Chart — Full Width */}
         <Card className="p-4 bg-card border-border card-glow">
-          <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">
-            Sentiment by Stock
-          </h3>
+          <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">Sentiment by Stock</h3>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={chartData} layout="vertical">
@@ -369,52 +339,38 @@ const Index = () => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[100px] flex items-center justify-center text-muted-foreground font-mono text-sm">
-              No analysis data yet. Upload a transcript to begin.
-            </div>
+            <div className="h-[100px] flex items-center justify-center text-muted-foreground font-mono text-sm">No analysis data yet. Upload a transcript to begin.</div>
           )}
         </Card>
 
-        {/* Latest Insights — Full Width */}
         <Card className="p-4 bg-card border-border card-glow">
-          <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">
-            Latest Insights
-          </h3>
+          <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">Latest Insights</h3>
           {latestAnalyses.length > 0 ? (
             <div className="space-y-3">
               {latestAnalyses.map((a) => (
                 <div key={a.id} className="p-3 bg-muted rounded-md border border-border">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-sm font-semibold text-foreground">
-                      {(a as any).stocks?.ticker || "—"} • {a.quarter}
-                    </span>
+                    <span className="font-mono text-sm font-semibold text-foreground">{(a as any).stocks?.ticker || "—"} • {a.quarter}</span>
                     <div className="flex items-center gap-2">
                       {a.management_tone && <ToneBadge tone={a.management_tone} />}
                       {a.sentiment_score && <SentimentBadge score={a.sentiment_score} />}
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2">
-                    {a.analysis_summary || "Analysis pending..."}
-                  </p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{a.analysis_summary || "Analysis pending..."}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="h-[100px] flex items-center justify-center text-muted-foreground font-mono text-sm">
-              No insights yet. Add stocks and upload transcripts.
-            </div>
+            <div className="h-[100px] flex items-center justify-center text-muted-foreground font-mono text-sm">No insights yet. Add stocks and upload transcripts.</div>
           )}
         </Card>
 
-        {/* Quick Actions */}
         <div className="flex gap-3">
           <button onClick={() => navigate("/stocks")} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-md font-mono text-sm text-foreground border border-border transition-colors">
-            <Activity className="inline h-4 w-4 mr-2" />
-            Manage Stocks
+            <Activity className="inline h-4 w-4 mr-2" />Manage Stocks
           </button>
           <button onClick={() => navigate("/transcripts")} className="px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-md font-mono text-sm text-primary border border-primary/20 transition-colors">
-            <FileText className="inline h-4 w-4 mr-2" />
-            Upload Transcript
+            <FileText className="inline h-4 w-4 mr-2" />Upload Transcript
           </button>
         </div>
       </div>
