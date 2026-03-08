@@ -161,8 +161,7 @@ export function SnapshotsTab({ stockId }: Props) {
               <div className="flex flex-wrap gap-2 mb-4">
                 {Object.entries(metrics).map(([key, val]) => (
                   <Badge key={key} variant="secondary" className="font-mono text-[10px]">
-                    {key.replace(/_/g, " ")}: {val}
-                    {key.includes("growth") || key.includes("opm") || key.includes("margin") ? "%" : ""}
+                    {key.replace(/_/g, " ")}: {String(val)}
                   </Badge>
                 ))}
               </div>

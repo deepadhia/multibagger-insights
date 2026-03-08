@@ -79,16 +79,17 @@ Return a SINGLE JSON object. No prose. No markdown backticks.
     "summary": "3-5 sentence ruthless summary of the quarter.",
     "dodged_questions": ["Summarize specific questions management avoided or deflected"],
     "red_flags": ["Concerning inconsistencies, tone shifts, or data points"],
-    "metrics": {
-      "revenue_growth": "Value (Source Quote)",
-      "opm": "Value (Source Quote)",
-      "pat_growth": "Value (Source Quote)",
-      "vap_ebitda_margin": "Value (Source Quote)",
-      "vap_revenue_share": "Value (Source Quote)",
-      "type4_cylinder_status": "Value (Source Quote)",
-      "net_debt": "Value (Source Quote)",
-      "order_book": "Value (Source Quote)"
-    }
+    "metrics": ${JSON.stringify(
+      (stock.metric_keys || ["revenue_growth", "opm", "pat_growth", "order_book"]).reduce(
+        (acc: Record<string, string>, key: string) => {
+          acc[key] = "Value (Source Quote)";
+          return acc;
+        },
+        {} as Record<string, string>
+      ),
+      null,
+      6
+    )}
   },
   "promise_updates": [
     {
