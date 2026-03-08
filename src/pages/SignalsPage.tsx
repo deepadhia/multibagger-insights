@@ -311,7 +311,6 @@ export default function SignalsPage() {
   );
 }
 
-import React from "react";
 
 function FilterChip({ active, onClick, label, color }: {
   active: boolean; onClick: () => void; label: string; color?: string;
