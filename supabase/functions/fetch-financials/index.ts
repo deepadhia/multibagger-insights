@@ -450,5 +450,5 @@ function parseScreenerData(html: string) {
     capex: null,
   }));
 
-  return { ratios, yearly, quarterly };
+  return { ratios, yearly, quarterly, shareholding };
 }
