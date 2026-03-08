@@ -103,6 +103,16 @@ export default function StockDetailPage() {
   const latestFinancial = financials?.[financials.length - 1];
   const latestPrice = prices?.[0];
 
+  // Find latest non-null value for each metric across all years (iterate backwards)
+  const latestVal = (key: string) => {
+    if (!financials) return null;
+    for (let i = financials.length - 1; i >= 0; i--) {
+      const v = (financials[i] as any)[key];
+      if (v !== null && v !== undefined && v !== 0) return v;
+    }
+    return null;
+  };
+
   const achievedCount = commitments?.filter(c => c.status === "Achieved").length || 0;
   const totalCommitments = commitments?.length || 0;
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
