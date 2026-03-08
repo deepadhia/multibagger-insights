@@ -92,31 +92,47 @@ Deno.serve(async (req) => {
             const headline = (item.NEWSSUB || "").toLowerCase();
             const attachUrl = item.ATTACHMENTNAME || "";
 
+            const newsDate = item.NEWS_DT || item.DT_TM || "";
+            let dateStr = "";
+            try {
+              const d = new Date(newsDate);
+              if (!isNaN(d.getTime())) dateStr = d.toISOString().split("T")[0];
+            } catch { /* skip */ }
+
+            const buildLink = (title: string, type: string): LinkItem => ({
+              title: title || "Filing",
+              date: dateStr,
+              source: "BSE",
+              url: attachUrl.startsWith("http") ? attachUrl : `https://www.bseindia.com/xml-data/corpfiling/AttachLive/${attachUrl}`,
+              type,
+            });
+
+            // Check for new order announcements
+            if (ORDER_KEYWORDS.some(k => headline.includes(k))) {
+              orderAnnouncements.push(buildLink(item.NEWSSUB || "New Order", "order"));
+              continue;
+            }
+
             // Filter for transcript/concall related filings
-            if (
+            const isTranscript =
               headline.includes("transcript") ||
               headline.includes("concall") ||
               headline.includes("con call") ||
               headline.includes("conference call") ||
               headline.includes("earnings call") ||
               headline.includes("analyst meet") ||
-              headline.includes("investor presentation")
-            ) {
-              const newsDate = item.NEWS_DT || item.DT_TM || "";
-              let dateStr = "";
-              try {
-                const d = new Date(newsDate);
-                if (!isNaN(d.getTime())) dateStr = d.toISOString().split("T")[0];
-              } catch { /* skip */ }
+              headline.includes("investor presentation");
 
-              transcripts.push({
-                title: item.NEWSSUB || "Transcript",
-                date: dateStr,
-                source: "BSE",
-                url: attachUrl.startsWith("http") ? attachUrl : `https://www.bseindia.com/xml-data/corpfiling/AttachLive/${attachUrl}`,
-                type: headline.includes("presentation") ? "presentation" : "transcript",
-              });
-            }
+            if (!isTranscript) continue;
+
+            // Exclude intimations & generic notices
+            const isExcluded = EXCLUDE_KEYWORDS.some(k => headline.includes(k));
+            if (isExcluded && !headline.includes("transcript")) continue;
+
+            transcripts.push(buildLink(
+              item.NEWSSUB || "Transcript",
+              headline.includes("presentation") ? "presentation" : "transcript",
+            ));
           }
         } else {
           console.log(`BSE search failed for ${searchTerm}: ${bseResp.status}`);
