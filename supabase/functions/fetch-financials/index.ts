@@ -231,31 +231,48 @@ function parseScreenerData(html: string) {
   const opm = filterTTM(opmRow);
   const eps = filterTTM(epsRow);
 
-  // ── 3. Ratios section (yearly ROCE, ROE, D/E) ──
-  // Screener.in may use different section IDs, try multiple
+  // ── 3. Ratios section (yearly ROCE) ──
   let ratiosTable = extractTableData(html, "ratios");
   if (ratiosTable.headers.length === 0) {
     ratiosTable = extractTableData(html, "ratio");
   }
-  console.log("Ratios section headers:", JSON.stringify(ratiosTable.headers));
-  console.log("Ratios section row labels:", JSON.stringify(Object.keys(ratiosTable.rows)));
+  console.log("Ratios row labels:", JSON.stringify(Object.keys(ratiosTable.rows)));
 
   const ratioYears = ratiosTable.headers.filter(h => !h.includes("TTM"));
-  const roceRow = findRow(ratiosTable.rows, "roce", "return on capital");
-  const roeRow = findRow(ratiosTable.rows, "roe", "return on equity");
-  const deRow = findRow(ratiosTable.rows, "debt to equity", "debt / equity", "debt-equity", "d/e");
+  const roceRow = findRow(ratiosTable.rows, "roce");
   const ratioTTMIdx = ratiosTable.headers.indexOf("TTM");
   const roceYearly = ratioTTMIdx >= 0 ? roceRow.filter((_, i) => i !== ratioTTMIdx) : roceRow;
-  const roeYearly = ratioTTMIdx >= 0 ? roeRow.filter((_, i) => i !== ratioTTMIdx) : roeRow;
-  const deYearly = ratioTTMIdx >= 0 ? deRow.filter((_, i) => i !== ratioTTMIdx) : deRow;
 
-  console.log("ROCE row found:", roceRow.length, "values");
-  console.log("ROE row found:", roeRow.length, "values");
-  console.log("D/E row found:", deRow.length, "values");
+  // ── 3b. Balance Sheet section (ROE via Net Profit/Equity, D/E) ──
+  const bs = extractTableData(html, "balance-sheet");
+  console.log("Balance Sheet row labels:", JSON.stringify(Object.keys(bs.rows)));
+  const bsYears = bs.headers.filter(h => !h.includes("TTM"));
+  const borrowingsRow = findRow(bs.rows, "borrowings", "total debt", "long term borrowings");
+  const equityRow = findRow(bs.rows, "equity capital", "share capital");
+  const reservesRow = findRow(bs.rows, "reserves");
+  const bsTTMIdx = bs.headers.indexOf("TTM");
+  const borrowings = bsTTMIdx >= 0 ? borrowingsRow.filter((_, i) => i !== bsTTMIdx) : borrowingsRow;
+  const equityCap = bsTTMIdx >= 0 ? equityRow.filter((_, i) => i !== bsTTMIdx) : equityRow;
+  const reserves = bsTTMIdx >= 0 ? reservesRow.filter((_, i) => i !== bsTTMIdx) : reservesRow;
+
+  // Compute ROE and D/E from balance sheet
+  const computedRoe: (number | null)[] = [];
+  const computedDE: (number | null)[] = [];
+  for (let i = 0; i < bsYears.length; i++) {
+    const totalEquity = (equityCap[i] || 0) + (reserves[i] || 0);
+    const debt = borrowings[i] || 0;
+    // Match net profit by year
+    const yearMatch = bsYears[i]?.match(/(\d{4})/);
+    const year = yearMatch ? parseInt(yearMatch[1]) : 0;
+    const plIdx = plYears.findIndex(h => h.includes(String(year)));
+    const np = plIdx >= 0 ? netProfit[plIdx] : 0;
+    
+    computedRoe.push(totalEquity > 0 && np ? Math.round((np / totalEquity) * 100 * 10) / 10 : null);
+    computedDE.push(totalEquity > 0 ? Math.round((debt / totalEquity) * 100) / 100 : null);
+  }
 
   // ── 4. Cash flow (CFO, Capex → FCF) ──
   const cf = extractTableData(html, "cash-flow");
-  if (cf.headers.length === 0) console.log("Cash flow section not found");
   console.log("Cash flow row labels:", JSON.stringify(Object.keys(cf.rows)));
 
   const cfYears = cf.headers.filter(h => !h.includes("TTM"));
@@ -265,15 +282,31 @@ function parseScreenerData(html: string) {
   const cfo = cfTTMIdx >= 0 ? cfoRow.filter((_, i) => i !== cfTTMIdx) : cfoRow;
   const capex = cfTTMIdx >= 0 ? capexRow.filter((_, i) => i !== cfTTMIdx) : capexRow;
 
-  // ── 5. Shareholding (promoter %) ──
+  // ── 5. Shareholding (promoter %) — quarterly, map to nearest FY year ──
   const sh = extractTableData(html, "shareholding");
-  console.log("Shareholding headers:", JSON.stringify(sh.headers));
   console.log("Shareholding row labels:", JSON.stringify(Object.keys(sh.rows)));
   const shQuarters = sh.headers;
-  const promoterRow = findRow(sh.rows, "promoters", "promoter");
+  const promoterRow = findRow(sh.rows, "promoter");
+  console.log("Promoter row found:", promoterRow.length, "values");
+
+  // Build a map: year → promoter% (use March quarter for FY, or latest available)
+  const promoterByYear: Map<number, number> = new Map();
+  for (let i = 0; i < shQuarters.length; i++) {
+    const qLabel = shQuarters[i]; // e.g. "Mar 2023", "Dec 2024"
+    const yearMatch = qLabel.match(/(\d{4})/);
+    if (!yearMatch) continue;
+    const year = parseInt(yearMatch[1]);
+    const val = promoterRow[i];
+    if (!val || val === 0) continue;
+    // Prefer March quarter (FY end), but overwrite with latest
+    if (qLabel.includes("Mar")) {
+      promoterByYear.set(year, val);
+    } else if (!promoterByYear.has(year)) {
+      promoterByYear.set(year, val);
+    }
+  }
 
   // ── 6. Build yearly entries ──
-  // Use P&L years as primary, merge ratios data by matching year
   const yearlyMap: Map<number, any> = new Map();
 
   for (let i = 0; i < plYears.length; i++) {
@@ -300,11 +333,11 @@ function parseScreenerData(html: string) {
       roe: null,
       debt_equity: null,
       free_cash_flow: null,
-      promoter_holding: null,
+      promoter_holding: promoterByYear.get(year) || null,
     });
   }
 
-  // Merge ROCE/ROE/D/E from ratios section
+  // Merge ROCE from ratios section
   for (let i = 0; i < ratioYears.length; i++) {
     const yearMatch = ratioYears[i].match(/(\d{4})/);
     if (!yearMatch) continue;
@@ -312,8 +345,18 @@ function parseScreenerData(html: string) {
     const entry = yearlyMap.get(year);
     if (entry) {
       entry.roce = roceYearly[i] || null;
-      entry.roe = roeYearly[i] || null;
-      entry.debt_equity = deYearly[i] || null;
+    }
+  }
+
+  // Merge ROE and D/E from balance sheet computations
+  for (let i = 0; i < bsYears.length; i++) {
+    const yearMatch = bsYears[i].match(/(\d{4})/);
+    if (!yearMatch) continue;
+    const year = parseInt(yearMatch[1]);
+    const entry = yearlyMap.get(year);
+    if (entry) {
+      if (computedRoe[i] !== null) entry.roe = computedRoe[i];
+      if (computedDE[i] !== null) entry.debt_equity = computedDE[i];
     }
   }
 
@@ -328,14 +371,14 @@ function parseScreenerData(html: string) {
     }
   }
 
-  // Apply promoter holding from shareholding section (latest value to latest year)
-  // Also try to map quarterly promoter data to yearly
+  // Apply latest promoter holding to latest year if not already set
   if (promoterRow.length > 0 && yearlyMap.size > 0) {
-    const latestPromoter = promoterRow[promoterRow.length - 1];
     const sortedYears = Array.from(yearlyMap.keys()).sort((a, b) => a - b);
     const latestYear = sortedYears[sortedYears.length - 1];
     const latestEntry = yearlyMap.get(latestYear);
-    if (latestEntry) latestEntry.promoter_holding = latestPromoter;
+    if (latestEntry && latestEntry.promoter_holding === null) {
+      latestEntry.promoter_holding = promoterRow[promoterRow.length - 1] || null;
+    }
   }
   // Fallback from top ratios
   if (promoterHolding !== null && yearlyMap.size > 0) {
