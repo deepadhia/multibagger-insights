@@ -9,118 +9,78 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { Trash2, RefreshCw, Loader2, ChevronDown, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function StocksPage() {
   const { data: stocks, isLoading } = useStocks();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [refreshingPrices, setRefreshingPrices] = useState(false);
-  const [refreshingFinancials, setRefreshingFinancials] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
-  const [fetchingResults, setFetchingResults] = useState(false);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
 
-  const handleRefreshAllPrices = async () => {
-    if (!stocks?.length) return;
-    setRefreshingPrices(true);
-    let success = 0;
-    let failed = 0;
+  const refreshActions = [
+    { key: "prices", label: "Refresh Prices" },
+    { key: "financials", label: "Refresh Financials" },
+    { key: "backfill", label: "Backfill 3Y Prices" },
+    { key: "results", label: "Fetch Results Dates" },
+  ];
 
-    for (const stock of stocks) {
-      try {
-        const { data, error } = await supabase.functions.invoke("fetch-price", {
-          body: { ticker: stock.ticker },
-        });
-        if (error || data?.success === false) {
-          failed++;
-        } else {
-          success++;
-        }
-      } catch {
-        failed++;
-      }
-    }
+  const handleRefresh = async (key: string) => {
+    if (!stocks?.length && key !== "results") return;
+    setRefreshing(key);
 
-    queryClient.invalidateQueries({ queryKey: ["prices"] });
-    toast({
-      title: "Prices refreshed",
-      description: `${success} updated, ${failed} failed out of ${stocks.length} stocks`,
-    });
-    setRefreshingPrices(false);
-  };
-
-  const handleRefreshAllFinancials = async () => {
-    if (!stocks?.length) return;
-    setRefreshingFinancials(true);
-    let success = 0;
-    let failed = 0;
-
-    for (const stock of stocks) {
-      try {
-        // Add delay between requests to avoid rate limiting
-        if (success + failed > 0) await new Promise(r => setTimeout(r, 2000));
-        const { data, error } = await supabase.functions.invoke("fetch-financials", {
-          body: {
-            stock_id: stock.id,
-            ticker: stock.ticker,
-            screener_slug: stock.screener_slug || stock.ticker,
-          },
-        });
-        if (error || data?.success === false) {
-          failed++;
-        } else {
-          success++;
-        }
-      } catch {
-        failed++;
-      }
-    }
-
-    queryClient.invalidateQueries({ queryKey: ["financial-metrics"] });
-    queryClient.invalidateQueries({ queryKey: ["financial-results"] });
-    toast({
-      title: "Financials refreshed",
-      description: `${success} updated, ${failed} failed out of ${stocks.length} stocks`,
-    });
-    setRefreshingFinancials(false);
-  };
-
-  const handleBackfillPrices = async () => {
-    if (!stocks?.length) return;
-    setBackfilling(true);
     try {
-      const { data, error } = await supabase.functions.invoke("refresh-all-prices", {
-        body: { backfill: true },
-      });
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ["prices"] });
-      queryClient.invalidateQueries({ queryKey: ["all-prices"] });
-      toast({
-        title: "3Y Price Backfill Complete",
-        description: data?.message || "Historical prices loaded",
-      });
-    } catch (e: any) {
-      toast({ title: "Backfill failed", description: e.message, variant: "destructive" });
-    }
-    setBackfilling(false);
-  };
+      if (key === "prices") {
+        let success = 0, failed = 0;
+        for (const stock of stocks!) {
+          try {
+            const { error } = await supabase.functions.invoke("fetch-price", { body: { ticker: stock.ticker } });
+            error ? failed++ : success++;
+          } catch { failed++; }
+        }
+        queryClient.invalidateQueries({ queryKey: ["prices"] });
+        toast({ title: "Prices refreshed", description: `${success} updated, ${failed} failed` });
 
-  const handleFetchResultsDates = async () => {
-    setFetchingResults(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("fetch-results-calendar");
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ["stocks"] });
-      toast({
-        title: "Results dates updated",
-        description: data?.message || `${data?.updated || 0} stocks updated`,
-      });
+      } else if (key === "financials") {
+        let success = 0, failed = 0;
+        for (const stock of stocks!) {
+          if (success + failed > 0) await new Promise(r => setTimeout(r, 2000));
+          try {
+            const { error } = await supabase.functions.invoke("fetch-financials", {
+              body: { stock_id: stock.id, ticker: stock.ticker, screener_slug: stock.screener_slug || stock.ticker },
+            });
+            error ? failed++ : success++;
+          } catch { failed++; }
+        }
+        queryClient.invalidateQueries({ queryKey: ["financial-metrics"] });
+        queryClient.invalidateQueries({ queryKey: ["financial-results"] });
+        toast({ title: "Financials refreshed", description: `${success} updated, ${failed} failed` });
+
+      } else if (key === "backfill") {
+        const { data, error } = await supabase.functions.invoke("refresh-all-prices", { body: { backfill: true } });
+        if (error) throw error;
+        queryClient.invalidateQueries({ queryKey: ["prices"] });
+        queryClient.invalidateQueries({ queryKey: ["all-prices"] });
+        toast({ title: "3Y Price Backfill Complete", description: data?.message || "Historical prices loaded" });
+
+      } else if (key === "results") {
+        const { data, error } = await supabase.functions.invoke("fetch-results-calendar");
+        if (error) throw error;
+        queryClient.invalidateQueries({ queryKey: ["stocks"] });
+        toast({ title: "Results dates updated", description: data?.message || `${data?.updated || 0} stocks updated` });
+      }
     } catch (e: any) {
-      toast({ title: "Failed to fetch results dates", description: e.message, variant: "destructive" });
+      toast({ title: "Failed", description: e.message, variant: "destructive" });
     }
-    setFetchingResults(false);
+
+    setRefreshing(null);
   };
 
   // Fetch latest analysis per stock
@@ -132,11 +92,8 @@ export default function StocksPage() {
         .select("stock_id, sentiment_score, management_tone")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      // Group by stock_id, take first (latest)
       const map: Record<string, { sentiment_score: number | null; management_tone: string | null }> = {};
-      data.forEach((a) => {
-        if (!map[a.stock_id]) map[a.stock_id] = a;
-      });
+      data.forEach((a) => { if (!map[a.stock_id]) map[a.stock_id] = a; });
       return map;
     },
   });
@@ -169,46 +126,38 @@ export default function StocksPage() {
             <p className="text-sm text-muted-foreground font-mono mt-1">Track and manage your portfolio</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefreshAllPrices}
-              disabled={refreshingPrices || !stocks?.length}
-              className="font-mono"
-            >
-              {refreshingPrices ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {refreshingPrices ? "Refreshing..." : "Refresh Prices"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefreshAllFinancials}
-              disabled={refreshingFinancials || !stocks?.length}
-              className="font-mono"
-            >
-              {refreshingFinancials ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {refreshingFinancials ? "Refreshing..." : "Refresh Financials"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleBackfillPrices}
-              disabled={backfilling || !stocks?.length}
-              className="font-mono"
-            >
-              {backfilling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {backfilling ? "Backfilling..." : "Backfill 3Y Prices"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleFetchResultsDates}
-              disabled={fetchingResults}
-              className="font-mono"
-            >
-              {fetchingResults ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {fetchingResults ? "Fetching..." : "Fetch Results Dates"}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-mono"
+                  disabled={!!refreshing}
+                >
+                  {refreshing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  {refreshing
+                    ? refreshActions.find(a => a.key === refreshing)?.label || "Refreshing..."
+                    : "Refresh Data"}
+                  <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="font-mono">
+                {refreshActions.map((action) => (
+                  <DropdownMenuItem
+                    key={action.key}
+                    onClick={() => handleRefresh(action.key)}
+                    disabled={!!refreshing}
+                    className="text-xs"
+                  >
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <AddStockDialog />
           </div>
         </div>
