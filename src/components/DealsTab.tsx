@@ -109,6 +109,9 @@ export function DealsTab({ stockId, ticker }: Props) {
                     <td className="p-2 text-right font-mono text-xs text-foreground">
                       {t.trade_value ? `₹${Number(t.trade_value).toLocaleString()}` : "—"}
                     </td>
+                    <td className="p-2 text-right font-mono text-xs text-foreground">
+                      {t.avg_price ? `₹${Number(t.avg_price).toLocaleString()}` : "—"}
+                    </td>
                     <td className="p-2 text-xs">
                       {t.mode_of_acquisition ? (
                         <Badge variant="outline" className={`font-mono text-[10px] ${
