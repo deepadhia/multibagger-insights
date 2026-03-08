@@ -17,6 +17,8 @@ import { ImportGeminiResponse } from "@/components/ImportGeminiResponse";
 import { MasterPromptEditor } from "@/components/MasterPromptEditor";
 import { DealsTab } from "@/components/DealsTab";
 import { ThesisScore } from "@/components/ThesisScore";
+import { ThesisTimeline } from "@/components/ThesisTimeline";
+import { ManagementCredibility } from "@/components/ManagementCredibility";
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus } from "@/lib/signals";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
@@ -146,7 +148,7 @@ export default function StockDetailPage() {
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
 
   // Multibagger signal detection
-  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || [], shareholding || [], promises || [], snapshots || []);
+  const signals = detectMultibaggerSignals(financials || [], latestAnalysis, commitments || [], shareholding || [], promises || [], snapshots || [], analyses || []);
   const thesisStatus = getThesisStatus(signals, calculateThesisScore(signals));
 
   // Chart data
@@ -348,6 +350,9 @@ export default function StockDetailPage() {
             <TabsTrigger value="deals" className="font-mono text-xs gap-1.5">
               <Briefcase className="h-3 w-3" /> Deals
             </TabsTrigger>
+            <TabsTrigger value="timeline" className="font-mono text-xs gap-1.5">
+              <TrendingUp className="h-3 w-3" /> Timeline
+            </TabsTrigger>
           </TabsList>
 
           {/* ═══ OVERVIEW TAB ═══ */}
@@ -459,28 +464,8 @@ export default function StockDetailPage() {
               </Card>
             )}
 
-            {/* Credibility score */}
-            {credibility !== null && (
-              <Card className="p-4 bg-card border-border card-glow">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Management Credibility</h3>
-                <div className="flex items-center gap-6">
-                  <div className="text-center">
-                    <p className={`text-4xl font-mono font-bold ${credibility >= 70 ? "text-terminal-green" : credibility >= 40 ? "text-terminal-amber" : "text-terminal-red"}`}>
-                      {credibility}%
-                    </p>
-                    <p className="text-[10px] text-muted-foreground font-mono mt-1">
-                      {achievedCount}/{totalCommitments} achieved
-                    </p>
-                  </div>
-                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${credibility >= 70 ? "bg-terminal-green" : credibility >= 40 ? "bg-terminal-amber" : "bg-terminal-red"}`}
-                      style={{ width: `${credibility}%` }}
-                    />
-                  </div>
-                </div>
-              </Card>
-            )}
+            {/* Management Credibility (3 dimensions) */}
+            <ManagementCredibility promises={promises || []} analyses={analyses || []} commitments={commitments || []} />
           </TabsContent>
 
           {/* ═══ FINANCIALS TAB ═══ */}
@@ -938,6 +923,11 @@ export default function StockDetailPage() {
           {/* ═══ DEALS TAB ═══ */}
           <TabsContent value="deals" className="space-y-4 mt-4">
             <DealsTab stockId={stock.id} ticker={stock.ticker} />
+          </TabsContent>
+
+          {/* ═══ TIMELINE TAB ═══ */}
+          <TabsContent value="timeline" className="space-y-4 mt-4">
+            <ThesisTimeline snapshots={snapshots || []} promises={promises || []} />
           </TabsContent>
         </Tabs>
       </div>

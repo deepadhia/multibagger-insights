@@ -98,9 +98,10 @@ const Index = () => {
       const snapshots = (allSnapshots || []).filter(s => s.stock_id === stock.id);
       const promises = (allPromises || []).filter(p => p.stock_id === stock.id);
       const commitments = (allCommitments || []).filter(c => c.stock_id === stock.id);
-      const latestAnalysis = (analyses || []).find(a => (a as any).stock_id === stock.id);
+      const stockAnalyses = (analyses || []).filter(a => (a as any).stock_id === stock.id);
+      const latestAnalysis = stockAnalyses[0];
 
-      const signals = detectMultibaggerSignals(financials, latestAnalysis, commitments, shareholding, promises, snapshots);
+      const signals = detectMultibaggerSignals(financials, latestAnalysis, commitments, shareholding, promises, snapshots, stockAnalyses);
       const score = calculateThesisScore(signals);
       const thesisStatus = getThesisStatus(signals, score);
 
