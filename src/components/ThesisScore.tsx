@@ -17,8 +17,9 @@ export function ThesisScore({ signals }: ThesisScoreProps) {
   const bearish = signals.filter(s => s.type === "bearish").length;
   const warning = signals.filter(s => s.type === "warning").length;
 
-  // Score: bullish = +10, warning = -3, bearish = -8, base 50, clamp 0-100
-  const raw = 50 + (bullish * 10) - (warning * 3) - (bearish * 8);
+  // Score: bullish = +8, warning = -5, bearish = -12, base 50, clamp 0-100
+  // Red flags & broken promises hit harder since investment is thesis-driven
+  const raw = 50 + (bullish * 8) - (warning * 5) - (bearish * 12);
   const score = Math.max(0, Math.min(100, raw));
 
   const getVerdict = () => {

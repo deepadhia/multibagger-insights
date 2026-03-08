@@ -1104,8 +1104,9 @@ function detectMultibaggerSignals(
     if (flags.length >= 3) {
       signals.push({ label: `⚠ ${flags.length} red flags in ${latestSnap.quarter}`, type: "bearish" });
     } else if (flags.length >= 1) {
-      signals.push({ label: `${flags.length} red flag${flags.length > 1 ? "s" : ""} in ${latestSnap.quarter}`, type: "warning" });
-    } else if (flags.length === 0 && dodged.length === 0) {
+      signals.push({ label: `${flags.length} red flag${flags.length > 1 ? "s" : ""} in ${latestSnap.quarter}`, type: "bearish" });
+    }
+    if (flags.length === 0 && dodged.length === 0) {
       signals.push({ label: `Clean quarter ${latestSnap.quarter}`, type: "bullish" });
     }
 
