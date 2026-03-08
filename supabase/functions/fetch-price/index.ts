@@ -52,10 +52,10 @@ async function fetchYahooQuote(symbol: string): Promise<NormalizedQuote | null> 
   }
 }
 
-// Fetch historical daily prices for 1Y
+// Fetch historical daily prices for 3Y
 async function fetchYahooHistorical(symbol: string): Promise<Array<{ date: string; price: number; volume: number | null }>> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3y`;
     const response = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
     });

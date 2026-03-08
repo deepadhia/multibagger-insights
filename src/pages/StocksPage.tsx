@@ -97,7 +97,7 @@ export default function StocksPage() {
       queryClient.invalidateQueries({ queryKey: ["prices"] });
       queryClient.invalidateQueries({ queryKey: ["all-prices"] });
       toast({
-        title: "1Y Price Backfill Complete",
+        title: "3Y Price Backfill Complete",
         description: data?.message || "Historical prices loaded",
       });
     } catch (e: any) {
@@ -180,7 +180,7 @@ export default function StocksPage() {
               className="font-mono"
             >
               {backfilling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {backfilling ? "Backfilling..." : "Backfill 1Y Prices"}
+              {backfilling ? "Backfilling..." : "Backfill 3Y Prices"}
             </Button>
             <AddStockDialog />
           </div>
