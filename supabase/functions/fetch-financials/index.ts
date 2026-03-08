@@ -48,64 +48,7 @@ serve(async (req) => {
       return processAndStore(fallbackHtml, stock_id, corsHeaders);
     }
 
-    console.log("HTML length:", html.length);
-
-    const metrics = parseScreenerData(html);
-    console.log("Parsed ratios:", JSON.stringify(metrics.ratios));
-    console.log("Parsed yearly count:", metrics.yearly.length);
-    console.log("Parsed quarterly count:", metrics.quarterly.length);
-
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Upsert yearly metrics
-    for (const m of metrics.yearly) {
-      const { error } = await supabase.from("financial_metrics").upsert(
-        {
-          stock_id,
-          year: m.year,
-          revenue: m.revenue,
-          net_profit: m.net_profit,
-          opm: m.opm,
-          eps: m.eps,
-          revenue_growth: m.revenue_growth,
-          profit_growth: m.profit_growth,
-          roce: m.roce,
-          roe: m.roe,
-          debt_equity: m.debt_equity,
-          promoter_holding: m.promoter_holding,
-          free_cash_flow: m.free_cash_flow,
-        },
-        { onConflict: "stock_id,year", ignoreDuplicates: false }
-      );
-      if (error) console.error("Upsert yearly error:", error);
-    }
-
-    // Upsert quarterly financial results
-    for (const q of metrics.quarterly) {
-      const { error } = await supabase.from("financial_results").upsert(
-        {
-          stock_id,
-          quarter: q.quarter,
-          revenue: q.revenue,
-          ebitda_margin: q.ebitda_margin,
-          debt: q.debt,
-          capex: q.capex,
-        },
-        { onConflict: "stock_id,quarter", ignoreDuplicates: false }
-      );
-      if (error) console.error("Upsert quarterly error:", error);
-    }
-
-    return new Response(JSON.stringify({
-      success: true,
-      ratios: metrics.ratios,
-      yearly: metrics.yearly,
-      quarterly: metrics.quarterly,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return processAndStore(html, stock_id, corsHeaders);
   } catch (e) {
     console.error("fetch-financials error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
@@ -113,6 +56,65 @@ serve(async (req) => {
     });
   }
 });
+
+async function processAndStore(html: string, stock_id: string, corsHeaders: Record<string, string>) {
+  console.log("HTML length:", html.length);
+
+  const metrics = parseScreenerData(html);
+  console.log("Parsed ratios:", JSON.stringify(metrics.ratios));
+  console.log("Parsed yearly count:", metrics.yearly.length);
+  console.log("Parsed quarterly count:", metrics.quarterly.length);
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  for (const m of metrics.yearly) {
+    const { error } = await supabase.from("financial_metrics").upsert(
+      {
+        stock_id,
+        year: m.year,
+        revenue: m.revenue,
+        net_profit: m.net_profit,
+        opm: m.opm,
+        eps: m.eps,
+        revenue_growth: m.revenue_growth,
+        profit_growth: m.profit_growth,
+        roce: m.roce,
+        roe: m.roe,
+        debt_equity: m.debt_equity,
+        promoter_holding: m.promoter_holding,
+        free_cash_flow: m.free_cash_flow,
+      },
+      { onConflict: "stock_id,year", ignoreDuplicates: false }
+    );
+    if (error) console.error("Upsert yearly error:", error);
+  }
+
+  for (const q of metrics.quarterly) {
+    const { error } = await supabase.from("financial_results").upsert(
+      {
+        stock_id,
+        quarter: q.quarter,
+        revenue: q.revenue,
+        ebitda_margin: q.ebitda_margin,
+        debt: q.debt,
+        capex: q.capex,
+      },
+      { onConflict: "stock_id,quarter", ignoreDuplicates: false }
+    );
+    if (error) console.error("Upsert quarterly error:", error);
+  }
+
+  return new Response(JSON.stringify({
+    success: true,
+    ratios: metrics.ratios,
+    yearly: metrics.yearly,
+    quarterly: metrics.quarterly,
+  }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 async function fetchScreenerPage(slug: string, sessionId: string, csrfToken: string): Promise<string | null> {
   const headers = {
