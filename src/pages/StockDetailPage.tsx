@@ -59,6 +59,7 @@ export default function StockDetailPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
       queryClient.invalidateQueries({ queryKey: ["financial-results", id] });
+      queryClient.invalidateQueries({ queryKey: ["shareholding", id] });
       toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
