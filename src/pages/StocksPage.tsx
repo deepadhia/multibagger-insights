@@ -107,6 +107,22 @@ export default function StocksPage() {
     setBackfilling(false);
   };
 
+  const handleFetchResultsDates = async () => {
+    setFetchingResults(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-results-calendar");
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      toast({
+        title: "Results dates updated",
+        description: data?.message || `${data?.updated || 0} stocks updated`,
+      });
+    } catch (e: any) {
+      toast({ title: "Failed to fetch results dates", description: e.message, variant: "destructive" });
+    }
+    setFetchingResults(false);
+  };
+
   // Fetch latest analysis per stock
   const { data: latestAnalysis } = useQuery({
     queryKey: ["latest-analysis"],
