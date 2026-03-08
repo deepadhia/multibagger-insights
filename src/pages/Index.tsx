@@ -288,7 +288,6 @@ const Index = () => {
             </div>
           </Card>
         )}
-        </div>
 
         {stockReturns.length > 0 && stockReturns.some(sr => sr.latestPrice) && (
           <Card className="p-4 bg-card border-border card-glow overflow-hidden">
