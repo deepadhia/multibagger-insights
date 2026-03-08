@@ -207,8 +207,49 @@ export function SnapshotsTab({ stockId }: Props) {
               <CollapsibleContent>
                 <div className="px-4 pb-4 space-y-4 border-t border-border/50">
 
-                  {/* Edit button row */}
-                  <div className="flex justify-end pt-3">
+                  {/* Action buttons row */}
+                  <div className="flex justify-between items-center pt-3">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="font-mono text-[10px] h-7 px-3"
+                      disabled={deleting === snap.id}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const quarter = snap.quarter;
+                        const revertPromises = confirm(
+                          `Delete snapshot for ${quarter}?\n\nThis will also revert any promises resolved in ${quarter} back to "pending" so you can re-import.`
+                        );
+                        if (!revertPromises) return;
+                        setDeleting(snap.id);
+                        try {
+                          // 1. Delete the snapshot
+                          await supabase.from("quarterly_snapshots").delete().eq("id", snap.id);
+                          // 2. Revert promises resolved in this quarter back to pending
+                          await supabase
+                            .from("management_promises")
+                            .update({ status: "pending", resolved_in_quarter: null })
+                            .eq("stock_id", stockId)
+                            .eq("resolved_in_quarter", quarter);
+                          // 3. Delete new promises that were made in this quarter (they came from this import)
+                          await supabase
+                            .from("management_promises")
+                            .delete()
+                            .eq("stock_id", stockId)
+                            .eq("made_in_quarter", quarter);
+                          queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
+                          queryClient.invalidateQueries({ queryKey: ["management-promises", stockId] });
+                          toast({ title: `Deleted ${quarter}`, description: "Snapshot removed, promises reverted to pending, new promises from that quarter deleted." });
+                        } catch (err: any) {
+                          toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+                        } finally {
+                          setDeleting(null);
+                        }
+                      }}
+                    >
+                      {deleting === snap.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Trash2 className="h-3 w-3 mr-1" />}
+                      Delete {snap.quarter}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
