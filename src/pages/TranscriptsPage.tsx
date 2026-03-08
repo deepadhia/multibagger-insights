@@ -167,8 +167,19 @@ export default function TranscriptsPage() {
                 <Textarea
                   value={jsonInput}
                   onChange={(e) => {
-                    setJsonInput(e.target.value);
+                    const val = e.target.value;
+                    setJsonInput(val);
                     setParseError(null);
+                    // Auto-detect quarter from JSON
+                    try {
+                      const clean = val.replace(/```json/gi, "").replace(/```/g, "").trim();
+                      const parsed = JSON.parse(clean);
+                      if (parsed?.quarterly_snapshot?.quarter && !quarter) {
+                        setQuarter(parsed.quarterly_snapshot.quarter);
+                      }
+                    } catch {
+                      // ignore parse errors during typing
+                    }
                   }}
                   placeholder={`Paste the Gemini JSON here...\n\n{\n  "quarterly_snapshot": {\n    "quarter": "Q4FY25",\n    "summary": "...",\n    "dodged_questions": [...],\n    "red_flags": [...],\n    "metrics": {...}\n  },\n  "new_promises": [...]\n}`}
                   className="bg-muted border-border font-mono text-sm min-h-[300px]"
@@ -178,6 +189,19 @@ export default function TranscriptsPage() {
                     <AlertTriangle className="h-3 w-3" /> {parseError}
                   </p>
                 )}
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs flex items-center gap-1">
+                  <Edit3 className="h-3 w-3" /> Quarter (auto-detected, editable)
+                </Label>
+                <input
+                  type="text"
+                  value={quarter}
+                  onChange={(e) => setQuarter(e.target.value.toUpperCase())}
+                  placeholder="e.g. Q4FY25"
+                  className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
               </div>
 
               <Button onClick={handleImport} disabled={loading || !jsonInput.trim()} className="w-full font-mono">
