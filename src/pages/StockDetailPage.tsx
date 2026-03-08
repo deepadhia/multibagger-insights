@@ -249,29 +249,20 @@ export default function StockDetailPage() {
         )}
 
         {/* ── THESIS + BUY PRICE ── */}
-        {(stock.investment_thesis || stock.buy_price) && (
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
-            {stock.investment_thesis && (
-              <Card className="p-4 bg-card border-border card-glow">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <FileText className="h-3 w-3" /> Investment Thesis
-                </h3>
-                <p className="text-sm text-foreground leading-relaxed">{stock.investment_thesis}</p>
-              </Card>
-            )}
-            {stock.buy_price && (
-              <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Buy Price</p>
-                <p className="text-2xl font-mono font-bold text-foreground">₹{Number(stock.buy_price).toLocaleString()}</p>
-                {latestPrice && stock.buy_price && (
-                  <p className={`font-mono text-xs mt-1 ${Number(latestPrice.price) >= Number(stock.buy_price) ? "text-terminal-green" : "text-terminal-red"}`}>
-                    {((Number(latestPrice.price) - Number(stock.buy_price)) / Number(stock.buy_price) * 100).toFixed(1)}% return
-                  </p>
-                )}
-              </Card>
-            )}
-          </div>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+          <InvestmentThesisEditor stockId={stock.id} thesis={stock.investment_thesis} />
+          {stock.buy_price && (
+            <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
+              <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Buy Price</p>
+              <p className="text-2xl font-mono font-bold text-foreground">₹{Number(stock.buy_price).toLocaleString()}</p>
+              {latestPrice && stock.buy_price && (
+                <p className={`font-mono text-xs mt-1 ${Number(latestPrice.price) >= Number(stock.buy_price) ? "text-terminal-green" : "text-terminal-red"}`}>
+                  {((Number(latestPrice.price) - Number(stock.buy_price)) / Number(stock.buy_price) * 100).toFixed(1)}% return
+                </p>
+              )}
+            </Card>
+          )}
+        </div>
 
         {/* ── MAIN TABBED CONTENT ── */}
         <Tabs defaultValue="overview" className="w-full">
