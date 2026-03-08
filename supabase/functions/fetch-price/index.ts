@@ -25,19 +25,35 @@ serve(async (req) => {
       });
     }
 
-    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(alphaKey)}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    // Try with .BSE suffix for Indian stocks, then without
+    const tickerVariants = [
+      `${ticker}.BSE`,
+      `${ticker}.NSE`,
+      ticker,
+    ];
 
-    if (data["Error Message"] || data["Note"]) {
-      return new Response(JSON.stringify({ error: data["Error Message"] || data["Note"] }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let quote = null;
+    for (const t of tickerVariants) {
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(t)}&apikey=${encodeURIComponent(alphaKey)}`;
+      console.log("Trying ticker:", t);
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data["Error Message"] || data["Note"]) {
+        console.log("API error for", t, ":", data["Error Message"] || data["Note"]);
+        continue;
+      }
+
+      const q = data["Global Quote"];
+      if (q && q["05. price"]) {
+        quote = q;
+        console.log("Found price for", t, ":", q["05. price"]);
+        break;
+      }
     }
 
-    const quote = data["Global Quote"];
-    if (!quote || !quote["05. price"]) {
-      return new Response(JSON.stringify({ error: "No data returned for ticker" }), {
+    if (!quote) {
+      return new Response(JSON.stringify({ error: `No data returned for ticker ${ticker}. Try BSE/NSE format.` }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
