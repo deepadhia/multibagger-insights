@@ -13,6 +13,7 @@ import { InvestmentThesisEditor } from "@/components/InvestmentThesisEditor";
 import { PromisesTab } from "@/components/PromisesTab";
 import { SnapshotsTab } from "@/components/SnapshotsTab";
 import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
+import { DealsTab } from "@/components/DealsTab";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
@@ -23,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, Loader2, DollarSign, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Target, AlertTriangle, Zap, Quote,
-  BarChart3, Activity, Shield, FileText, Users,
+  BarChart3, Activity, Shield, FileText, Users, Briefcase,
 } from "lucide-react";
 
 const chartTooltipStyle = {
@@ -289,6 +290,9 @@ export default function StockDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="peers" className="font-mono text-xs gap-1.5">
               <Users className="h-3 w-3" /> Peers
+            </TabsTrigger>
+            <TabsTrigger value="deals" className="font-mono text-xs gap-1.5">
+              <Briefcase className="h-3 w-3" /> Deals
             </TabsTrigger>
           </TabsList>
 
@@ -976,6 +980,11 @@ export default function StockDetailPage() {
             ) : (
               <EmptyState text="No peer data. Click 'Financials' to fetch peer comparison from Screener." />
             )}
+          </TabsContent>
+
+          {/* ═══ DEALS TAB ═══ */}
+          <TabsContent value="deals" className="space-y-4 mt-4">
+            <DealsTab stockId={stock.id} ticker={stock.ticker} />
           </TabsContent>
         </Tabs>
       </div>
