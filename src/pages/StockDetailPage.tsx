@@ -252,24 +252,27 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        {/* ── MULTIBAGGER SIGNALS ── */}
+        {/* ── THESIS SCORE + MULTIBAGGER SIGNALS ── */}
         {signals.length > 0 && (
-          <Card className="p-4 bg-card border-border card-glow">
-            <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-              <Zap className="h-3 w-3 text-terminal-amber" /> Multibagger Signals
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {signals.map((s, i) => (
-                <Badge key={i} variant="outline" className={`font-mono text-[10px] ${
-                  s.type === "bullish" ? "text-terminal-green border-terminal-green/30 bg-terminal-green/10" :
-                  s.type === "warning" ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10" :
-                  "text-terminal-red border-terminal-red/30 bg-terminal-red/10"
-                }`}>
-                  {s.type === "bullish" ? "✓" : s.type === "warning" ? "⚠" : "✗"} {s.label}
-                </Badge>
-              ))}
-            </div>
-          </Card>
+          <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-4">
+            <ThesisScore signals={signals} />
+            <Card className="p-4 bg-card border-border card-glow">
+              <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                <Zap className="h-3 w-3 text-terminal-amber" /> Multibagger Signals
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {signals.map((s, i) => (
+                  <Badge key={i} variant="outline" className={`font-mono text-[10px] ${
+                    s.type === "bullish" ? "text-terminal-green border-terminal-green/30 bg-terminal-green/10" :
+                    s.type === "warning" ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10" :
+                    "text-terminal-red border-terminal-red/30 bg-terminal-red/10"
+                  }`}>
+                    {s.type === "bullish" ? "✓" : s.type === "warning" ? "⚠" : "✗"} {s.label}
+                  </Badge>
+                ))}
+              </div>
+            </Card>
+          </div>
         )}
 
         {/* ── THESIS + BUY PRICE + RESULTS DATE ── */}
