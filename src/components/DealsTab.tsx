@@ -93,6 +93,7 @@ export function DealsTab({ stockId, ticker }: Props) {
                   <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Category</th>
                   <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Securities</th>
                   <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Value (₹)</th>
+                  <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Avg Price</th>
                   <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Mode</th>
                 </tr>
               </thead>
