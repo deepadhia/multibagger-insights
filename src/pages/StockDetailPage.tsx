@@ -350,6 +350,9 @@ export default function StockDetailPage() {
             <TabsTrigger value="deals" className="font-mono text-xs gap-1.5">
               <Briefcase className="h-3 w-3" /> Deals
             </TabsTrigger>
+            <TabsTrigger value="timeline" className="font-mono text-xs gap-1.5">
+              <TrendingUp className="h-3 w-3" /> Timeline
+            </TabsTrigger>
           </TabsList>
 
           {/* ═══ OVERVIEW TAB ═══ */}
