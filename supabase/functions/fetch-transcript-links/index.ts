@@ -226,11 +226,21 @@ Deno.serve(async (req) => {
     // Sort by date descending
     unique.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
+    // Deduplicate orders
+    const seenOrders = new Set<string>();
+    const uniqueOrders = orderAnnouncements.filter(t => {
+      if (seenOrders.has(t.url)) return false;
+      seenOrders.add(t.url);
+      return true;
+    });
+    uniqueOrders.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
     return new Response(JSON.stringify({
       success: true,
       ticker,
       count: unique.length,
       transcripts: unique,
+      orders: uniqueOrders,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
