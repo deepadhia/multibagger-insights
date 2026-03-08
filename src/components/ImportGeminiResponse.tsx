@@ -15,6 +15,10 @@ interface Props {
 }
 
 interface GeminiResponse {
+  thesis_status?: {
+    status: "strengthening" | "stable" | "weakening" | "broken";
+    reason: string;
+  };
   quarterly_snapshot: {
     quarter: string;
     summary: string;
