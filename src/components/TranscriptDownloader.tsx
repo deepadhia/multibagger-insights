@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Download, Loader2, ExternalLink, Search } from "lucide-react";
+import { FileText, Loader2, ExternalLink, Search, Zap } from "lucide-react";
 
 interface TranscriptLink {
   title: string;
@@ -23,6 +23,7 @@ interface Props {
 export function TranscriptDownloader({ ticker, companyName, screenerSlug }: Props) {
   const [loading, setLoading] = useState(false);
   const [links, setLinks] = useState<TranscriptLink[] | null>(null);
+  const [orders, setOrders] = useState<TranscriptLink[]>([]);
   const { toast } = useToast();
 
   const handleFetch = async () => {
@@ -34,10 +35,12 @@ export function TranscriptDownloader({ ticker, companyName, screenerSlug }: Prop
       if (error) throw error;
       if (data?.transcripts) {
         setLinks(data.transcripts);
-        if (data.transcripts.length === 0) {
-          toast({ title: "No transcripts found", description: `No concall transcripts found for ${ticker} in the last 1 year.` });
+        setOrders(data.orders || []);
+        const total = data.transcripts.length + (data.orders?.length || 0);
+        if (total === 0) {
+          toast({ title: "No transcripts found", description: `No concall transcripts found for ${ticker}.` });
         } else {
-          toast({ title: `Found ${data.transcripts.length} transcripts` });
+          toast({ title: `Found ${data.transcripts.length} transcripts, ${data.orders?.length || 0} orders` });
         }
       }
     } catch (err: any) {
@@ -112,6 +115,36 @@ export function TranscriptDownloader({ ticker, companyName, screenerSlug }: Prop
           <p className="font-mono text-[10px] text-muted-foreground mt-2">
             💡 Download PDFs and paste the text into Gemini with your analysis prompt.
           </p>
+        </div>
+      )}
+
+      {orders.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-2">
+            <Zap className="h-3 w-3 text-terminal-green" /> New Order Announcements
+          </h4>
+          <div className="space-y-2">
+            {orders.map((order, i) => (
+              <a
+                key={i}
+                href={order.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between p-2 rounded bg-terminal-green/5 border border-terminal-green/20 hover:bg-terminal-green/10 transition-colors group"
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Zap className="h-3.5 w-3.5 text-terminal-green shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-foreground truncate">{order.title}</p>
+                    {order.date && (
+                      <p className="font-mono text-[10px] text-muted-foreground">{order.date}</p>
+                    )}
+                  </div>
+                </div>
+                <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </a>
+            ))}
+          </div>
         </div>
       )}
     </Card>
