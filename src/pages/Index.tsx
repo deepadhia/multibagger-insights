@@ -443,7 +443,6 @@ const Index = () => {
                      </tr>
                    ))}
                 </tbody>
-                </tbody>
               </table>
             </div>
           </Card>
