@@ -13,6 +13,7 @@ import { InvestmentThesisEditor } from "@/components/InvestmentThesisEditor";
 import { PromisesTab } from "@/components/PromisesTab";
 import { SnapshotsTab } from "@/components/SnapshotsTab";
 import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
+import { ImportGeminiResponse } from "@/components/ImportGeminiResponse";
 import { DealsTab } from "@/components/DealsTab";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
