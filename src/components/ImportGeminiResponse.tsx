@@ -330,7 +330,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
                   </Badge>
                   <span className="text-muted-foreground text-[10px] truncate max-w-[300px]">{parsed.thesis_status.reason}</span>
                 </div>
-              )}
+              <div>
                 <span className="text-muted-foreground">Quarter:</span>{" "}
                 <Badge variant="outline" className="text-[10px]">{effectiveQuarter}</Badge>
                 {quarterOverride && parsed.quarterly_snapshot.quarter && quarterOverride !== parsed.quarterly_snapshot.quarter && (
