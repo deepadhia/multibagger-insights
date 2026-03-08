@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useManagementPromises } from "@/hooks/useStocks";
+import { useManagementPromises, useQuarterlySnapshots } from "@/hooks/useStocks";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, Check } from "lucide-react";
 
