@@ -21,12 +21,23 @@ function useAllPrices() {
   return useQuery({
     queryKey: ["all-prices"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("prices")
-        .select("stock_id, date, price, volume")
-        .order("date", { ascending: false });
-      if (error) throw error;
-      return data;
+      // Paginate to get all prices (Supabase default limit is 1000)
+      const allData: any[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("prices")
+          .select("stock_id, date, price, volume")
+          .order("date", { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return allData;
     },
   });
 }
