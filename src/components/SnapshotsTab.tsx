@@ -1,7 +1,13 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useQuarterlySnapshots } from "@/hooks/useStocks";
-import { AlertTriangle, MessageSquare, FileText } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle, MessageSquare, FileText, Code, Save, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 
 const MOCK_SNAPSHOTS = [
   {
@@ -36,6 +42,49 @@ export function SnapshotsTab({ stockId }: Props) {
   const { data: dbSnapshots } = useQuarterlySnapshots(stockId);
   const snapshots = dbSnapshots && dbSnapshots.length > 0 ? dbSnapshots : MOCK_SNAPSHOTS;
   const isMock = !dbSnapshots || dbSnapshots.length === 0;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editJson, setEditJson] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [expandedRaw, setExpandedRaw] = useState<string | null>(null);
+
+  const startEditing = (snap: any) => {
+    const json = snap.raw_ai_output || {
+      summary: snap.summary,
+      dodged_questions: snap.dodged_questions,
+      red_flags: snap.red_flags,
+      metrics: snap.metrics,
+    };
+    setEditJson(JSON.stringify(json, null, 2));
+    setEditingId(snap.id);
+  };
+
+  const handleSave = async (snapId: string) => {
+    try {
+      const parsed = JSON.parse(editJson);
+      setSaving(true);
+
+      const update: Record<string, any> = { raw_ai_output: parsed };
+      // Also update parsed fields if they exist in the JSON
+      if (parsed.summary !== undefined) update.summary = parsed.summary;
+      if (parsed.dodged_questions !== undefined) update.dodged_questions = parsed.dodged_questions;
+      if (parsed.red_flags !== undefined) update.red_flags = parsed.red_flags;
+      if (parsed.metrics !== undefined) update.metrics = parsed.metrics;
+
+      const { error } = await supabase.from("quarterly_snapshots").update(update).eq("id", snapId);
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
+      setEditingId(null);
+      toast({ title: "Snapshot updated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message?.includes("JSON") ? "Invalid JSON" : err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -51,6 +100,8 @@ export function SnapshotsTab({ stockId }: Props) {
         const dodged = (Array.isArray(snap.dodged_questions) ? snap.dodged_questions : []) as string[];
         const flags = (Array.isArray(snap.red_flags) ? snap.red_flags : []) as string[];
         const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, number>;
+        const isEditing = editingId === snap.id;
+        const isExpanded = expandedRaw === snap.id;
 
         return (
           <Card key={snap.id} className="p-5 bg-card border-border card-glow">
@@ -59,12 +110,46 @@ export function SnapshotsTab({ stockId }: Props) {
                 <FileText className="h-4 w-4 text-primary" />
                 {snap.quarter}
               </h3>
-              {snap.raw_ai_output && (
-                <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
-                  Raw JSON saved
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {snap.raw_ai_output && (
+                  <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+                    Raw JSON saved
+                  </Badge>
+                )}
+                {!isMock && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="font-mono text-[10px] h-6 px-2"
+                    onClick={() => isEditing ? setEditingId(null) : startEditing(snap)}
+                  >
+                    <Code className="h-3 w-3 mr-1" />
+                    {isEditing ? "Cancel" : "Edit JSON"}
+                  </Button>
+                )}
+              </div>
             </div>
+
+            {/* JSON Editor */}
+            {isEditing && (
+              <div className="mb-4 space-y-2">
+                <Textarea
+                  value={editJson}
+                  onChange={(e) => setEditJson(e.target.value)}
+                  className="font-mono text-xs min-h-[200px] bg-muted border-border"
+                  placeholder="Paste or edit JSON..."
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => handleSave(snap.id)} disabled={saving} className="font-mono text-xs">
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                    Save
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setEditingId(null)} className="font-mono text-xs">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Summary */}
             {snap.summary && (
@@ -118,6 +203,24 @@ export function SnapshotsTab({ stockId }: Props) {
                 </div>
               )}
             </div>
+
+            {/* View Raw AI Output */}
+            {snap.raw_ai_output && !isEditing && (
+              <div className="mt-4">
+                <button
+                  className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setExpandedRaw(isExpanded ? null : snap.id)}
+                >
+                  {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  View Raw AI Output
+                </button>
+                {isExpanded && (
+                  <pre className="mt-2 p-3 bg-muted rounded border border-border/50 text-[10px] font-mono text-muted-foreground overflow-x-auto max-h-[300px] overflow-y-auto">
+                    {JSON.stringify(snap.raw_ai_output, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
           </Card>
         );
       })}
