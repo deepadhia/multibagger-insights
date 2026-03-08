@@ -9,9 +9,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { SentimentBadge } from "@/components/SentimentBadge";
-import { ToneBadge } from "@/components/ToneBadge";
-import { Loader2, FileText, Upload } from "lucide-react";
+import { Loader2, FileText, Upload, CheckCircle2, AlertTriangle } from "lucide-react";
+
+interface GeminiPayload {
+  quarterly_snapshot: {
+    quarter: string;
+    summary?: string;
+    dodged_questions?: string[];
+    red_flags?: string[];
+    metrics?: Record<string, unknown>;
+  };
+  promise_updates?: Array<{
+    promise_id: string;
+    new_status: string;
+  }>;
+  new_promises?: Array<{
+    promise_text: string;
+    target_deadline?: string;
+  }>;
+}
 
 export default function TranscriptsPage() {
   const { data: stocks } = useStocks();
@@ -19,48 +35,100 @@ export default function TranscriptsPage() {
   const queryClient = useQueryClient();
 
   const [stockId, setStockId] = useState("");
-  const [quarter, setQuarter] = useState("");
-  const [year, setYear] = useState(new Date().getFullYear().toString());
-  const [transcriptText, setTranscriptText] = useState("");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [jsonInput, setJsonInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ snapshots: number; promisesUpdated: number; promisesCreated: number } | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
 
-  const handleAnalyze = async () => {
-    if (!stockId || !quarter || !transcriptText.trim()) {
-      toast({ title: "Missing fields", description: "Please fill in all required fields.", variant: "destructive" });
+  const parseJson = (raw: string): GeminiPayload | null => {
+    try {
+      const clean = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      if (!parsed.quarterly_snapshot?.quarter) {
+        setParseError("Missing quarterly_snapshot.quarter in JSON");
+        return null;
+      }
+      setParseError(null);
+      return parsed as GeminiPayload;
+    } catch {
+      setParseError("Invalid JSON format. Check the Gemini output for syntax errors.");
+      return null;
+    }
+  };
+
+  const handleImport = async () => {
+    if (!stockId) {
+      toast({ title: "Select a stock", variant: "destructive" });
       return;
     }
 
-    setAnalyzing(true);
+    const payload = parseJson(jsonInput);
+    if (!payload) return;
+
+    setLoading(true);
     setResult(null);
 
     try {
-      // Save transcript
-      const { error: transcriptError } = await supabase.from("transcripts").insert({
-        stock_id: stockId,
-        quarter,
-        year: parseInt(year),
-        transcript_text: transcriptText,
-      });
-      if (transcriptError) throw transcriptError;
+      const snap = payload.quarterly_snapshot;
 
-      // Call AI analysis
-      const { data, error } = await supabase.functions.invoke("analyze-transcript", {
-        body: { stock_id: stockId, quarter, year: parseInt(year), transcript_text: transcriptText },
-      });
+      // 1. Upsert quarterly snapshot
+      const { error: snapError } = await supabase
+        .from("quarterly_snapshots")
+        .upsert({
+          stock_id: stockId,
+          quarter: snap.quarter,
+          summary: snap.summary || null,
+          dodged_questions: snap.dodged_questions || [],
+          red_flags: snap.red_flags || [],
+          metrics: snap.metrics || {},
+        }, { onConflict: "stock_id,quarter" });
 
-      if (error) throw error;
+      if (snapError) throw snapError;
 
-      setResult(data);
-      queryClient.invalidateQueries({ queryKey: ["all-analysis"] });
-      queryClient.invalidateQueries({ queryKey: ["analysis", stockId] });
-      queryClient.invalidateQueries({ queryKey: ["commitments", stockId] });
-      toast({ title: "Analysis complete", description: "Transcript analyzed successfully." });
+      // 2. Update existing promises
+      let promisesUpdated = 0;
+      if (payload.promise_updates?.length) {
+        for (const update of payload.promise_updates) {
+          if (update.new_status !== "pending") {
+            const { error } = await supabase
+              .from("management_promises")
+              .update({
+                status: update.new_status,
+                resolved_in_quarter: snap.quarter,
+              })
+              .eq("id", update.promise_id);
+            if (!error) promisesUpdated++;
+          }
+        }
+      }
+
+      // 3. Insert new promises
+      let promisesCreated = 0;
+      if (payload.new_promises?.length) {
+        const rows = payload.new_promises.map((p) => ({
+          stock_id: stockId,
+          promise_text: p.promise_text,
+          made_in_quarter: snap.quarter,
+          target_deadline: p.target_deadline || null,
+          status: "pending",
+        }));
+
+        const { error: promiseError } = await supabase
+          .from("management_promises")
+          .insert(rows);
+        if (promiseError) throw promiseError;
+        promisesCreated = rows.length;
+      }
+
+      setResult({ snapshots: 1, promisesUpdated, promisesCreated });
+      queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["management-promises"] });
+      toast({ title: "Import complete", description: `Snapshot saved, ${promisesCreated} new promises, ${promisesUpdated} updated.` });
     } catch (err: any) {
-      console.error("Analysis error:", err);
-      toast({ title: "Error", description: err.message || "Failed to analyze transcript", variant: "destructive" });
+      console.error("Import error:", err);
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
     } finally {
-      setAnalyzing(false);
+      setLoading(false);
     }
   };
 
@@ -68,79 +136,59 @@ export default function TranscriptsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Transcript Upload</h1>
+          <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Import Gemini Analysis</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
-            Paste earnings call transcripts for AI analysis
+            Paste structured JSON from Gemini to ingest quarterly analysis & management promises
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Upload Form */}
           <div className="lg:col-span-2 space-y-4">
             <Card className="p-4 bg-card border-border card-glow space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="font-mono text-xs">Stock</Label>
-                  <Select value={stockId} onValueChange={setStockId}>
-                    <SelectTrigger className="bg-muted border-border font-mono">
-                      <SelectValue placeholder="Select stock" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {stocks?.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.ticker} — {s.company_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="font-mono text-xs">Quarter</Label>
-                  <Select value={quarter} onValueChange={setQuarter}>
-                    <SelectTrigger className="bg-muted border-border font-mono">
-                      <SelectValue placeholder="Quarter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Q1">Q1</SelectItem>
-                      <SelectItem value="Q2">Q2</SelectItem>
-                      <SelectItem value="Q3">Q3</SelectItem>
-                      <SelectItem value="Q4">Q4</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="font-mono text-xs">Year</Label>
-                  <Select value={year} onValueChange={setYear}>
-                    <SelectTrigger className="bg-muted border-border font-mono">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[2024, 2025, 2026].map(y => (
-                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div>
+                <Label className="font-mono text-xs">Stock</Label>
+                <Select value={stockId} onValueChange={setStockId}>
+                  <SelectTrigger className="bg-muted border-border font-mono">
+                    <SelectValue placeholder="Select stock" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stocks?.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.ticker} — {s.company_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
-                <Label className="font-mono text-xs">Transcript Text</Label>
+                <Label className="font-mono text-xs">Gemini JSON Output</Label>
                 <Textarea
-                  value={transcriptText}
-                  onChange={(e) => setTranscriptText(e.target.value)}
-                  placeholder="Paste the earnings call transcript here..."
+                  value={jsonInput}
+                  onChange={(e) => {
+                    setJsonInput(e.target.value);
+                    setParseError(null);
+                  }}
+                  placeholder={`Paste the Gemini JSON here...\n\n{\n  "quarterly_snapshot": {\n    "quarter": "Q4FY25",\n    "summary": "...",\n    "dodged_questions": [...],\n    "red_flags": [...],\n    "metrics": {...}\n  },\n  "new_promises": [...]\n}`}
                   className="bg-muted border-border font-mono text-sm min-h-[300px]"
                 />
+                {parseError && (
+                  <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> {parseError}
+                  </p>
+                )}
               </div>
 
-              <Button onClick={handleAnalyze} disabled={analyzing} className="w-full font-mono">
-                {analyzing ? (
+              <Button onClick={handleImport} disabled={loading || !jsonInput.trim()} className="w-full font-mono">
+                {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Analyzing...
+                    Committing to Database...
                   </>
                 ) : (
                   <>
                     <Upload className="h-4 w-4 mr-2" />
-                    Analyze Transcript
+                    Commit to Database
                   </>
                 )}
               </Button>
@@ -148,110 +196,88 @@ export default function TranscriptsPage() {
           </div>
 
           {/* Instructions */}
-          <div>
+          <div className="space-y-4">
             <Card className="p-4 bg-card border-border card-glow">
               <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
-                <FileText className="inline h-3 w-3 mr-1" /> How It Works
+                <FileText className="inline h-3 w-3 mr-1" /> Workflow
               </h3>
               <ol className="space-y-2 text-xs text-muted-foreground">
                 <li className="flex gap-2">
                   <span className="text-primary font-mono font-bold">01</span>
-                  Select a stock from your portfolio
+                  Upload transcript (PDF/MP3) to Gemini Web
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary font-mono font-bold">02</span>
-                  Choose the quarter and year
+                  Use the MBIQ prompt to get structured JSON
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary font-mono font-bold">03</span>
-                  Paste the earnings call transcript
+                  Paste the JSON output here
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary font-mono font-bold">04</span>
-                  AI extracts growth drivers, risks, sentiment & signals
+                  Click "Commit to Database" to store
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary font-mono font-bold">05</span>
-                  Management commitments are tracked automatically
+                  Credibility scores update automatically
                 </li>
               </ol>
+            </Card>
+
+            <Card className="p-4 bg-card border-border card-glow">
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-3">
+                Expected JSON Shape
+              </h3>
+              <pre className="text-[10px] text-muted-foreground font-mono overflow-x-auto whitespace-pre-wrap">
+{`{
+  "quarterly_snapshot": {
+    "quarter": "Q4FY25",
+    "summary": "...",
+    "dodged_questions": ["..."],
+    "red_flags": ["..."],
+    "metrics": { "revenue": 500 }
+  },
+  "promise_updates": [
+    { "promise_id": "uuid",
+      "new_status": "kept" }
+  ],
+  "new_promises": [
+    { "promise_text": "...",
+      "target_deadline": "Q2FY26" }
+  ]
+}`}
+              </pre>
             </Card>
           </div>
         </div>
 
-        {/* Analysis Result */}
+        {/* Result */}
         {result && (
           <Card className="p-4 bg-card border-border card-glow">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
               <h3 className="font-mono text-xs uppercase tracking-wider text-primary terminal-glow">
-                Analysis Results
+                Import Successful
               </h3>
-              <div className="flex gap-2">
-                {result.analysis?.management_tone && <ToneBadge tone={result.analysis.management_tone} />}
-                {result.analysis?.sentiment_score && <SentimentBadge score={result.analysis.sentiment_score} size="md" />}
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-mono font-bold text-foreground">{result.snapshots}</p>
+                <p className="text-xs text-muted-foreground">Snapshot Saved</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-mono font-bold text-foreground">{result.promisesCreated}</p>
+                <p className="text-xs text-muted-foreground">New Promises</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-mono font-bold text-foreground">{result.promisesUpdated}</p>
+                <p className="text-xs text-muted-foreground">Promises Updated</p>
               </div>
             </div>
-
-            {result.analysis?.analysis_summary && (
-              <p className="text-sm text-foreground mb-4">{result.analysis.analysis_summary}</p>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ResultSection title="Growth Drivers" items={result.analysis?.growth_drivers} color="text-terminal-green" />
-              <ResultSection title="Margin Drivers" items={result.analysis?.margin_drivers} color="text-terminal-cyan" />
-              <ResultSection title="Risks" items={result.analysis?.risks} color="text-terminal-red" />
-              <ResultSection title="Industry Tailwinds" items={result.analysis?.industry_tailwinds} color="text-terminal-blue" />
-              <ResultSection title="Hidden Signals" items={result.analysis?.hidden_signals} color="text-terminal-amber" />
-            </div>
-
-            {result.analysis?.important_quotes?.length > 0 && (
-              <div className="mt-4">
-                <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-2">Key Quotes</h4>
-                <div className="space-y-2">
-                  {result.analysis.important_quotes.map((q: string, i: number) => (
-                    <blockquote key={i} className="text-xs text-muted-foreground italic border-l-2 border-primary/30 pl-3">
-                      "{q}"
-                    </blockquote>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {result.commitments?.length > 0 && (
-              <div className="mt-4">
-                <h4 className="font-mono text-xs uppercase tracking-wider text-terminal-amber mb-2">
-                  Management Commitments Extracted ({result.commitments.length})
-                </h4>
-                <div className="space-y-2">
-                  {result.commitments.map((c: any, i: number) => (
-                    <div key={i} className="text-xs p-2 bg-muted rounded flex justify-between">
-                      <span className="text-foreground">{c.statement}</span>
-                      {c.timeline && <span className="text-muted-foreground ml-2">{c.timeline}</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </Card>
         )}
       </div>
     </DashboardLayout>
-  );
-}
-
-function ResultSection({ title, items, color }: { title: string; items?: string[]; color: string }) {
-  if (!items || !Array.isArray(items) || items.length === 0) return null;
-  return (
-    <div>
-      <h4 className={`font-mono text-xs uppercase tracking-wider ${color} mb-2`}>{title}</h4>
-      <ul className="space-y-1">
-        {items.map((item, i) => (
-          <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-            <span className={`mt-1.5 h-1 w-1 rounded-full flex-shrink-0 ${color.replace("text-", "bg-")}`} />
-            {item}
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
