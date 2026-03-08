@@ -166,8 +166,8 @@ Deno.serve(async (req) => {
               exchange: 'NSE',
             };
           });
-          const { error } = await supabase.from('insider_trades').insert(rows);
-          if (error) console.error('Insider trades insert error:', error);
+          const { error } = await supabase.from('insider_trades').upsert(rows, { onConflict: 'stock_id,trade_date,person_name,trade_type' });
+          if (error) console.error('Insider trades upsert error:', error);
           else results.insider_trades = rows.length;
         }
       } else {
