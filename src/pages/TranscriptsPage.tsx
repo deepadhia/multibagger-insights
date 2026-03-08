@@ -114,7 +114,7 @@ export default function TranscriptsPage() {
         const rows = payload.new_promises.map((p) => ({
           stock_id: stockId,
           promise_text: p.promise_text,
-          made_in_quarter: snap.quarter,
+          made_in_quarter: activeQuarter,
           target_deadline: p.target_deadline || null,
           status: "pending",
         }));
