@@ -190,7 +190,22 @@ export default function StockDetailPage() {
                   <Badge variant="secondary" className="font-mono text-[10px]">{stock.sector}</Badge>
                 )}
               </div>
-              <p className="text-foreground text-sm mt-0.5">{stock.company_name}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-foreground text-sm">{stock.company_name}</p>
+                {stock.next_results_date && (
+                  <Badge
+                    variant="outline"
+                    className={`font-mono text-[10px] ${
+                      new Date(stock.next_results_date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                        ? "text-terminal-amber border-terminal-amber/30 bg-terminal-amber/10 animate-pulse"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    📅 Results: {new Date(stock.next_results_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    {new Date(stock.next_results_date) <= new Date() && " (Due!)"}
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
 
