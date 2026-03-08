@@ -13,6 +13,15 @@ type QuoteResult = {
   quote: AlphaGlobalQuote;
 } | null;
 
+type NormalizedQuote = {
+  symbol: string;
+  price: number;
+  volume: number | null;
+  change_percent: number | null;
+  date: string;
+  source: "alpha_vantage" | "yahoo" | "database";
+};
+
 const parseNumber = (value?: string | null) => {
   if (!value) return null;
   const cleaned = value.replace(/,/g, "").trim();
@@ -20,13 +29,18 @@ const parseNumber = (value?: string | null) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const formatDate = (epochSeconds?: number) => {
+  if (!epochSeconds) return new Date().toISOString().slice(0, 10);
+  return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
+};
+
 async function fetchGlobalQuote(apiKey: string, symbol: string): Promise<QuoteResult> {
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url);
   const data = await response.json();
 
-  if (data?.["Error Message"] || data?.["Note"]) {
-    console.log("GLOBAL_QUOTE error for", symbol, ":", data?.["Error Message"] || data?.["Note"]);
+  if (data?.["Error Message"] || data?.["Note"] || data?.["Information"]) {
+    console.log("GLOBAL_QUOTE error for", symbol, ":", data?.["Error Message"] || data?.["Note"] || data?.["Information"]);
     return null;
   }
 
@@ -41,7 +55,7 @@ async function discoverSymbols(apiKey: string, keyword: string): Promise<string[
   const response = await fetch(url);
   const data = await response.json();
 
-  if (data?.["Error Message"] || data?.["Note"] || !Array.isArray(data?.bestMatches)) {
+  if (data?.["Error Message"] || data?.["Note"] || data?.["Information"] || !Array.isArray(data?.bestMatches)) {
     return [];
   }
 
@@ -54,6 +68,34 @@ async function discoverSymbols(apiKey: string, keyword: string): Promise<string[
     .map((m: Record<string, string>) => m["1. symbol"])
     .filter(Boolean)
     .slice(0, 8);
+}
+
+async function fetchYahooQuote(symbol: string): Promise<NormalizedQuote | null> {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+  const response = await fetch(url);
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const result = data?.chart?.result?.[0];
+  const meta = result?.meta;
+
+  const price = Number(meta?.regularMarketPrice);
+  if (!Number.isFinite(price) || price <= 0) return null;
+
+  const previousClose = Number(meta?.chartPreviousClose);
+  const changePercent = Number.isFinite(previousClose) && previousClose > 0
+    ? ((price - previousClose) / previousClose) * 100
+    : null;
+
+  return {
+    symbol,
+    price,
+    volume: Number.isFinite(meta?.regularMarketVolume) ? Number(meta?.regularMarketVolume) : null,
+    change_percent: changePercent,
+    date: formatDate(Number(meta?.regularMarketTime)),
+    source: "yahoo",
+  };
 }
 
 serve(async (req) => {
@@ -99,7 +141,7 @@ serve(async (req) => {
       screenerSlug = stock?.screener_slug?.toUpperCase() ?? null;
     }
 
-    const tickerCandidates = new Set<string>([
+    const alphaCandidates = new Set<string>([
       normalizedTicker,
       `${normalizedTicker}.NSE`,
       `${normalizedTicker}.BSE`,
@@ -108,42 +150,91 @@ serve(async (req) => {
     ]);
 
     if (screenerSlug) {
-      tickerCandidates.add(screenerSlug);
-      tickerCandidates.add(`${screenerSlug}.NSE`);
-      tickerCandidates.add(`${screenerSlug}.BSE`);
-      tickerCandidates.add(`${screenerSlug}.NS`);
-      tickerCandidates.add(`${screenerSlug}.BO`);
+      alphaCandidates.add(screenerSlug);
+      alphaCandidates.add(`${screenerSlug}.NSE`);
+      alphaCandidates.add(`${screenerSlug}.BSE`);
+      alphaCandidates.add(`${screenerSlug}.NS`);
+      alphaCandidates.add(`${screenerSlug}.BO`);
     }
 
-    let foundQuote: QuoteResult = null;
+    let normalizedResult: NormalizedQuote | null = null;
     const triedSymbols: string[] = [];
 
-    for (const symbol of tickerCandidates) {
+    for (const symbol of alphaCandidates) {
       triedSymbols.push(symbol);
-      console.log("Trying ticker:", symbol);
-      foundQuote = await fetchGlobalQuote(alphaKey, symbol);
+      console.log("Trying alpha ticker:", symbol);
+      const foundQuote = await fetchGlobalQuote(alphaKey, symbol);
       if (foundQuote) {
-        console.log("Found price for", symbol, ":", foundQuote.quote["05. price"]);
+        const { quote } = foundQuote;
+        const price = parseNumber(quote["05. price"]);
+        if (!price) break;
+
+        normalizedResult = {
+          symbol,
+          price,
+          volume: parseNumber(quote["06. volume"]),
+          change_percent: parseNumber((quote["10. change percent"] || "").replace("%", "")),
+          date: quote["07. latest trading day"] || new Date().toISOString().slice(0, 10),
+          source: "alpha_vantage",
+        };
         break;
       }
     }
 
-    if (!foundQuote) {
+    if (!normalizedResult) {
       const discoveryKeywords = [normalizedTicker, screenerSlug].filter(Boolean) as string[];
       for (const keyword of discoveryKeywords) {
         const discovered = await discoverSymbols(alphaKey, keyword);
         for (const symbol of discovered) {
           if (triedSymbols.includes(symbol)) continue;
           triedSymbols.push(symbol);
-          console.log("Trying discovered symbol:", symbol);
-          foundQuote = await fetchGlobalQuote(alphaKey, symbol);
-          if (foundQuote) break;
+          console.log("Trying discovered alpha symbol:", symbol);
+          const foundQuote = await fetchGlobalQuote(alphaKey, symbol);
+          if (foundQuote) {
+            const { quote } = foundQuote;
+            const price = parseNumber(quote["05. price"]);
+            if (!price) continue;
+
+            normalizedResult = {
+              symbol,
+              price,
+              volume: parseNumber(quote["06. volume"]),
+              change_percent: parseNumber((quote["10. change percent"] || "").replace("%", "")),
+              date: quote["07. latest trading day"] || new Date().toISOString().slice(0, 10),
+              source: "alpha_vantage",
+            };
+            break;
+          }
         }
-        if (foundQuote) break;
+        if (normalizedResult) break;
       }
     }
 
-    if (!foundQuote) {
+    if (!normalizedResult) {
+      const yahooCandidates = new Set<string>([
+        normalizedTicker,
+        `${normalizedTicker}.NS`,
+        `${normalizedTicker}.BO`,
+      ]);
+
+      if (screenerSlug) {
+        yahooCandidates.add(screenerSlug);
+        yahooCandidates.add(`${screenerSlug}.NS`);
+        yahooCandidates.add(`${screenerSlug}.BO`);
+      }
+
+      for (const symbol of yahooCandidates) {
+        if (!triedSymbols.includes(symbol)) triedSymbols.push(symbol);
+        console.log("Trying yahoo ticker:", symbol);
+        const yahooResult = await fetchYahooQuote(symbol);
+        if (yahooResult) {
+          normalizedResult = yahooResult;
+          break;
+        }
+      }
+    }
+
+    if (!normalizedResult) {
       if (supabase && stockId) {
         const { data: lastPrice } = await supabase
           .from("prices")
@@ -177,33 +268,17 @@ serve(async (req) => {
       });
     }
 
-    const { symbol, quote } = foundQuote;
-    const result = {
-      symbol,
-      price: parseNumber(quote["05. price"]),
-      volume: parseNumber(quote["06. volume"]),
-      change_percent: parseNumber((quote["10. change percent"] || "").replace("%", "")),
-      date: quote["07. latest trading day"] || new Date().toISOString().slice(0, 10),
-    };
-
-    if (!result.price) {
-      return new Response(JSON.stringify({ success: false, error: "Invalid quote payload received" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     if (supabase && stockId) {
       await supabase.from("prices").insert({
         stock_id: stockId,
-        price: result.price,
-        volume: result.volume,
-        change_percent: result.change_percent,
-        date: result.date,
+        price: normalizedResult.price,
+        volume: normalizedResult.volume,
+        change_percent: normalizedResult.change_percent,
+        date: normalizedResult.date,
       });
     }
 
-    return new Response(JSON.stringify({ success: true, ...result }), {
+    return new Response(JSON.stringify({ success: true, ...normalizedResult }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
