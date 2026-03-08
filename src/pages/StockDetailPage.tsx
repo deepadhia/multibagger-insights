@@ -776,7 +776,8 @@ export default function StockDetailPage() {
 function detectMultibaggerSignals(
   financials: any[],
   latestAnalysis: any,
-  commitments: any[]
+  commitments: any[],
+  shareholding: any[]
 ): { label: string; type: "bullish" | "warning" | "bearish" }[] {
   const signals: { label: string; type: "bullish" | "warning" | "bearish" }[] = [];
   if (financials.length < 2) return signals;
@@ -826,6 +827,53 @@ function detectMultibaggerSignals(
   // High promoter holding
   if (latest.promoter_holding && latest.promoter_holding >= 60) {
     signals.push({ label: `High promoter ${latest.promoter_holding}%`, type: "bullish" });
+  }
+
+  // ── Shareholding-based signals ──
+  if (shareholding.length >= 2) {
+    const latestSH = shareholding[shareholding.length - 1];
+    const prevSH = shareholding[shareholding.length - 2];
+
+    // Promoter changes
+    if (latestSH.promoters != null && prevSH.promoters != null) {
+      const pChange = latestSH.promoters - prevSH.promoters;
+      if (pChange > 0.5) {
+        signals.push({ label: `Promoter ↑ ${pChange.toFixed(1)}%`, type: "bullish" });
+      } else if (pChange < -1) {
+        signals.push({ label: `Promoter ↓ ${Math.abs(pChange).toFixed(1)}%`, type: "warning" });
+      } else if (pChange < -3) {
+        signals.push({ label: `Promoter selling ${Math.abs(pChange).toFixed(1)}%`, type: "bearish" });
+      }
+    }
+
+    // FII changes
+    if (latestSH.fiis != null && prevSH.fiis != null) {
+      const fiiChange = latestSH.fiis - prevSH.fiis;
+      if (fiiChange > 1) {
+        signals.push({ label: `FII buying ↑ ${fiiChange.toFixed(1)}%`, type: "bullish" });
+      } else if (fiiChange < -2) {
+        signals.push({ label: `FII selling ↓ ${Math.abs(fiiChange).toFixed(1)}%`, type: "warning" });
+      }
+    }
+
+    // DII changes
+    if (latestSH.diis != null && prevSH.diis != null) {
+      const diiChange = latestSH.diis - prevSH.diis;
+      if (diiChange > 2) {
+        signals.push({ label: `DII accumulating ↑ ${diiChange.toFixed(1)}%`, type: "bullish" });
+      }
+    }
+
+    // Multi-quarter promoter trend (check last 4 quarters)
+    if (shareholding.length >= 4) {
+      const last4 = shareholding.slice(-4);
+      const promoterDeclines = last4.filter((s: any, i: number) => 
+        i > 0 && s.promoters != null && last4[i-1].promoters != null && s.promoters < last4[i-1].promoters
+      ).length;
+      if (promoterDeclines >= 3) {
+        signals.push({ label: "Promoter declining 3+ qtrs", type: "bearish" });
+      }
+    }
   }
 
   // Sentiment from AI analysis
