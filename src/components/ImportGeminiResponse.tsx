@@ -14,13 +14,19 @@ interface Props {
   ticker: string;
 }
 
-// V3 response format with nested metrics
-interface GeminiV3Response {
+// V5 response format
+interface GeminiV5Response {
+  ticker?: string;
   quarter: string;
   snapshot: {
     summary: string;
     management_tone: "bullish" | "neutral" | "cautious";
     thesis_status: "strengthening" | "stable" | "weakening" | "broken";
+    thesis_momentum?: "improving" | "stable" | "deteriorating";
+    thesis_drift?: {
+      status: "none" | "emerging" | "confirmed";
+      reason?: string;
+    };
     confidence_score: number;
     key_changes_vs_last_quarter?: string[];
   };
@@ -47,7 +53,7 @@ interface GeminiV3Response {
   }[];
 }
 
-// V2 legacy format for backward compatibility
+// V2 legacy format
 interface GeminiV2Response {
   thesis_status?: { status: string; reason: string };
   quarterly_snapshot: {
@@ -70,12 +76,14 @@ interface GeminiV2Response {
   }[];
 }
 
-// Normalized internal format
 interface NormalizedData {
   quarter: string;
   summary: string;
   thesis_status: string | null;
   thesis_status_reason: string | null;
+  thesis_momentum: string | null;
+  thesis_drift_status: string | null;
+  thesis_drift_reason: string | null;
   confidence_score: number | null;
   management_tone: string | null;
   dodged_questions: string[];
@@ -88,38 +96,41 @@ interface NormalizedData {
   raw: unknown;
 }
 
-function isV3(data: any): data is GeminiV3Response {
+function isV5(data: any): data is GeminiV5Response {
   return data.snapshot && data.metrics && typeof data.quarter === "string";
 }
 
 function normalize(data: any, fallbackQuarter: string): NormalizedData {
-  if (isV3(data)) {
-    const v3 = data as GeminiV3Response;
+  if (isV5(data)) {
+    const v = data as GeminiV5Response;
     return {
-      quarter: v3.quarter || fallbackQuarter,
-      summary: v3.snapshot.summary,
-      thesis_status: v3.snapshot.thesis_status,
-      thesis_status_reason: v3.snapshot.key_changes_vs_last_quarter?.join("; ") || null,
-      confidence_score: v3.snapshot.confidence_score,
-      management_tone: v3.snapshot.management_tone,
-      dodged_questions: v3.management_analysis?.dodged_questions || [],
-      red_flags: v3.management_analysis?.red_flags || [],
-      metrics: v3.metrics,
-      signals: v3.signals ? {
-        bullish: v3.signals.bullish || [],
-        warnings: v3.signals.warnings || [],
-        bearish: v3.signals.bearish || [],
+      quarter: v.quarter || fallbackQuarter,
+      summary: v.snapshot.summary,
+      thesis_status: v.snapshot.thesis_status,
+      thesis_status_reason: v.snapshot.key_changes_vs_last_quarter?.join("; ") || v.snapshot.thesis_drift?.reason || null,
+      thesis_momentum: v.snapshot.thesis_momentum || null,
+      thesis_drift_status: v.snapshot.thesis_drift?.status || null,
+      thesis_drift_reason: v.snapshot.thesis_drift?.reason || null,
+      confidence_score: v.snapshot.confidence_score,
+      management_tone: v.snapshot.management_tone,
+      dodged_questions: v.management_analysis?.dodged_questions || [],
+      red_flags: v.management_analysis?.red_flags || [],
+      metrics: v.metrics,
+      signals: v.signals ? {
+        bullish: v.signals.bullish || [],
+        warnings: v.signals.warnings || [],
+        bearish: v.signals.bearish || [],
       } : null,
-      key_changes: v3.snapshot.key_changes_vs_last_quarter || [],
-      promise_updates: (v3.promise_updates || []).map(p => ({
+      key_changes: v.snapshot.key_changes_vs_last_quarter || [],
+      promise_updates: (v.promise_updates || []).map(p => ({
         id: p.id,
         new_status: p.status,
         resolved_in_quarter: p.resolved_quarter || null,
         evidence: p.evidence,
       })),
-      new_promises: (v3.new_promises || []).map(p => ({
+      new_promises: (v.new_promises || []).map(p => ({
         promise_text: p.promise_text,
-        made_in_quarter: v3.quarter || fallbackQuarter,
+        made_in_quarter: v.quarter || fallbackQuarter,
         target_deadline: p.target_deadline || null,
         confidence: p.confidence,
       })),
@@ -133,6 +144,9 @@ function normalize(data: any, fallbackQuarter: string): NormalizedData {
     summary: v2.quarterly_snapshot?.summary || "",
     thesis_status: v2.thesis_status?.status || null,
     thesis_status_reason: v2.thesis_status?.reason || null,
+    thesis_momentum: null,
+    thesis_drift_status: null,
+    thesis_drift_reason: null,
     confidence_score: null,
     management_tone: null,
     dodged_questions: v2.quarterly_snapshot?.dodged_questions || [],
@@ -265,9 +279,22 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
           raw_ai_output: parsed.raw as any,
           thesis_status: parsed.thesis_status,
           thesis_status_reason: parsed.thesis_status_reason,
-        }, { onConflict: "stock_id,quarter" });
+        } as any, { onConflict: "stock_id,quarter" });
 
       if (snapErr) throw snapErr;
+
+      // 1b. Update V5 columns separately (they may not be in types yet)
+      if (parsed.thesis_momentum || parsed.thesis_drift_status || parsed.confidence_score != null) {
+        await supabase
+          .from("quarterly_snapshots")
+          .update({
+            thesis_momentum: parsed.thesis_momentum,
+            thesis_drift_status: parsed.thesis_drift_status,
+            confidence_score: parsed.confidence_score,
+          } as any)
+          .eq("stock_id", stockId)
+          .eq("quarter", effectiveQuarter);
+      }
 
       // 2. Update existing promises
       let updatedCount = 0;
@@ -340,6 +367,12 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
     }
   };
 
+  const driftColor = (status: string | null) => {
+    if (!status || status === "none") return null;
+    if (status === "confirmed") return "border-terminal-red text-terminal-red";
+    return "border-terminal-amber text-terminal-amber";
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -369,7 +402,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
         </div>
 
         <Textarea
-          placeholder="Paste Gemini JSON response (V2 or V3 format)..."
+          placeholder="Paste Gemini JSON response (V2 or V5 format)..."
           className="font-mono text-xs min-h-[200px]"
           value={rawJson}
           onChange={e => { setRawJson(e.target.value); setParsed(null); setParseError(null); }}
@@ -416,7 +449,9 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-terminal-green" />
               <span className="font-mono text-xs text-terminal-green">Valid JSON</span>
-              {parsed.signals ? (
+              {parsed.thesis_drift_status ? (
+                <Badge variant="outline" className="text-[10px]">V5</Badge>
+              ) : parsed.signals ? (
                 <Badge variant="outline" className="text-[10px]">V3</Badge>
               ) : (
                 <Badge variant="outline" className="text-[10px] text-muted-foreground">V2 Legacy</Badge>
@@ -425,16 +460,54 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
 
             <div className="space-y-2 font-mono text-xs">
               {parsed.thesis_status && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-muted-foreground">Thesis:</span>
                   <Badge variant="outline" className={`text-[10px] ${thesisStatusColor(parsed.thesis_status)}`}>
                     {parsed.thesis_status.toUpperCase()}
                   </Badge>
+                  {parsed.thesis_momentum && (
+                    <Badge variant="outline" className={`text-[10px] ${
+                      parsed.thesis_momentum === "improving" ? "text-terminal-green border-terminal-green/30" :
+                      parsed.thesis_momentum === "deteriorating" ? "text-terminal-red border-terminal-red/30" :
+                      "text-muted-foreground"
+                    }`}>
+                      {parsed.thesis_momentum}
+                    </Badge>
+                  )}
                   {parsed.confidence_score != null && (
-                    <span className="text-muted-foreground">Score: {parsed.confidence_score}</span>
+                    <span className={`${
+                      parsed.confidence_score >= 80 ? "text-terminal-green" :
+                      parsed.confidence_score >= 60 ? "text-foreground" :
+                      parsed.confidence_score >= 40 ? "text-terminal-amber" :
+                      "text-terminal-red"
+                    }`}>Score: {parsed.confidence_score}</span>
                   )}
                 </div>
               )}
+
+              {/* Thesis Drift Alert */}
+              {parsed.thesis_drift_status && parsed.thesis_drift_status !== "none" && (
+                <div className={`p-2.5 rounded border-l-4 ${
+                  parsed.thesis_drift_status === "confirmed"
+                    ? "bg-terminal-red/10 border-terminal-red"
+                    : "bg-terminal-amber/10 border-terminal-amber"
+                }`}>
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle className={`h-3 w-3 ${
+                      parsed.thesis_drift_status === "confirmed" ? "text-terminal-red" : "text-terminal-amber"
+                    }`} />
+                    <span className={`font-bold text-[10px] uppercase ${
+                      parsed.thesis_drift_status === "confirmed" ? "text-terminal-red" : "text-terminal-amber"
+                    }`}>
+                      THESIS DRIFT: {parsed.thesis_drift_status}
+                    </span>
+                  </div>
+                  {parsed.thesis_drift_reason && (
+                    <p className="text-[10px] mt-1 text-foreground/80">{parsed.thesis_drift_reason}</p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <span className="text-muted-foreground">Quarter:</span>{" "}
                 <Badge variant="outline" className="text-[10px]">{effectiveQuarter}</Badge>

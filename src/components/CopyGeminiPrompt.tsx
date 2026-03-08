@@ -53,11 +53,10 @@ export function CopyGeminiPrompt({ stock }: Props) {
       ? `${Math.round((kept.length / (kept.length + broken.length)) * 100)}%`
       : "No resolved promises yet";
 
-    // Build previous quarter context from last snapshot's raw_ai_output or fields
+    // Build previous quarter context from last snapshot
     const prevQuarterContext = (() => {
       const prevSnap = snapshots?.[0];
       if (!prevSnap) return "No previous quarter data available.";
-      // If we have the full raw AI output, inject it for maximum context
       if (prevSnap.raw_ai_output && typeof prevSnap.raw_ai_output === "object") {
         return JSON.stringify(prevSnap.raw_ai_output, null, 2);
       }
@@ -84,10 +83,12 @@ Dodged Questions: ${prevDodged.length > 0 ? prevDodged.join("; ") : "None"}`;
       {} as Record<string, { value: string; evidence: string }>
     );
 
-    const prompt = `You are a ruthless Indian equity research analyst. Your job is to evaluate whether the investment thesis is strengthening or weakening based on earnings calls and results. Ignore macro commentary and focus on operational metrics and commitments.
+    const prompt = `You are a ruthless Indian equity research analyst. Your job is to evaluate whether the investment thesis is strengthening or weakening based on earnings calls and results.
+
+Focus strictly on operational execution, not management optimism. If claims about demand, margins, or commercialization are made without supporting numbers, treat them as low-confidence signals and ignore generic macroeconomic fluff.
 
 ═══════════════════════════════════════
-TRACKING DIRECTIVES (STOCK CONTEXT)
+TRACKING DIRECTIVES (BASELINE THESIS)
 ═══════════════════════════════════════
 ${stock.tracking_directives || "No specific tracking directives set. Perform a general analysis focusing on revenue growth, margin trajectory, order book, and management credibility."}
 ${stock.investment_thesis ? `\nMY INVESTMENT THESIS: ${stock.investment_thesis}` : ""}
@@ -111,12 +112,18 @@ OUTPUT FORMAT (Strict JSON)
 Return a SINGLE JSON object exactly matching this schema. No prose. No markdown backticks.
 
 {
+  "ticker": "${stock.ticker}",
   "quarter": "Q_FY__",
   "snapshot": {
     "summary": "3-5 sentence ruthless summary of the quarter.",
     "management_tone": "bullish | neutral | cautious",
     "thesis_status": "strengthening | stable | weakening | broken",
-    "confidence_score": 0-100,
+    "thesis_momentum": "improving | stable | deteriorating",
+    "thesis_drift": {
+      "status": "none | emerging | confirmed",
+      "reason": "Identify any metric, timeline, narrative, or capital allocation drift away from the baseline thesis."
+    },
+    "confidence_score": 0,
     "key_changes_vs_last_quarter": [
       "Crucial operational or narrative shifts compared to the previous quarter context"
     ]
@@ -151,13 +158,19 @@ Return a SINGLE JSON object exactly matching this schema. No prose. No markdown 
 ═══════════════════════════════════════
 INSTRUCTIONS
 ═══════════════════════════════════════
-1. Compare current quarter data against the PREVIOUS QUARTER CONTEXT. Populate the key_changes_vs_last_quarter and adjust the thesis_status accordingly.
-2. Cross-reference EVERY promise ID from the ledger. Update status ruthlessly with evidence.
-3. THE SILENT FAILURE RULE: If a promise's target_deadline has passed in this quarter and management does not confirm completion, you MUST mark the promise status as "broken" with evidence "Silent failure — deadline passed with no confirmation".
-4. Never combine value and evidence in the same field. If a metric is not explicitly disclosed in the transcript or results, set the value to "NOT DISCLOSED" and do not hallucinate numbers.
-5. Provide exact source quotes for every piece of evidence.
-6. Extract ALL new forward-looking commitments as new_promises and assign a confidence score based on management's historical track record and tone.
-7. Pay special attention to management's tone during Q&A. Flag any hesitations, deflections, or "corporate speak" in management_analysis.red_flags.
+1. THESIS DRIFT DETECTOR: Actively compare current execution against the BASELINE THESIS. Flag "emerging" drift if timelines slip, capital is misallocated, or management shifts focus away from thesis drivers. Flag "confirmed" drift if structural drivers are abandoned. Otherwise, "none".
+2. Compare current quarter data against the PREVIOUS QUARTER CONTEXT. Populate the key_changes_vs_last_quarter array. Detect language shifts (e.g., "strong demand" → "stable demand") and log them in red_flags if sentiment deteriorates.
+3. Cross-reference EVERY promise ID from the ledger. Update status ruthlessly with evidence.
+4. THE SILENT FAILURE RULE: If the target_deadline occurs in or before the current quarter and the transcript/results do not confirm completion, you MUST mark the promise as "broken" with evidence "Silent failure — deadline passed with no confirmation". If management explicitly delays the timeline, mark it as "broken" and note the revised timeline in evidence.
+5. Metrics listed in the TRACKING DIRECTIVES are mandatory. If management avoids disclosing them, set the value to "NOT DISCLOSED" and add a note in red_flags. Never combine value and evidence in the same field, and do not hallucinate numbers.
+6. Flag execution risk in signals.warnings or red_flags if commercialization timelines, approvals, or capex schedules are delayed compared to previous quarters.
+7. Evidence quotes MUST be verbatim excerpts from the transcript or presentation. If no supporting quote exists, return "NOT DISCLOSED".
+8. Calculate the confidence_score (0-100) reflecting overall thesis conviction:
+   - 80–100: Thesis strengthening with clear operational execution.
+   - 60–79: Thesis intact but execution still pending.
+   - 40–59: Increasing uncertainty or delayed milestones.
+   - < 40: Thesis deterioration or broken commitments.
+9. Extract ALL new forward-looking commitments as new_promises and assign a confidence tier based on management's historical track record and tone.
 
 ---
 [PASTE TRANSCRIPT AND/OR RESULTS BELOW]
@@ -166,7 +179,7 @@ INSTRUCTIONS
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied(true);
-      toast({ title: "V3 Prompt copied", description: `${stock.ticker} — ${pendingLedger.length} pending promises, nested metrics schema. Paste into Gemini.` });
+      toast({ title: "V5 Prompt copied", description: `${stock.ticker} — ${pendingLedger.length} pending promises, thesis drift detector enabled. Paste into Gemini.` });
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast({ title: "Copy failed", description: "Could not access clipboard.", variant: "destructive" });
