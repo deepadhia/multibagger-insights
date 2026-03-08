@@ -230,20 +230,34 @@ function parseScreenerData(html: string) {
   const eps = filterTTM(epsRow);
 
   // ── 3. Ratios section (yearly ROCE, ROE, D/E) ──
-  const ratiosTable = extractTableData(html, "ratios");
+  // Screener.in may use different section IDs, try multiple
+  let ratiosTable = extractTableData(html, "ratios");
+  if (ratiosTable.headers.length === 0) {
+    ratiosTable = extractTableData(html, "ratio");
+  }
+  console.log("Ratios section headers:", JSON.stringify(ratiosTable.headers));
+  console.log("Ratios section row labels:", JSON.stringify(Object.keys(ratiosTable.rows)));
+
   const ratioYears = ratiosTable.headers.filter(h => !h.includes("TTM"));
-  const roceRow = findRow(ratiosTable.rows, "roce");
+  const roceRow = findRow(ratiosTable.rows, "roce", "return on capital");
   const roeRow = findRow(ratiosTable.rows, "roe", "return on equity");
-  const deRow = findRow(ratiosTable.rows, "debt to equity", "debt / equity");
+  const deRow = findRow(ratiosTable.rows, "debt to equity", "debt / equity", "debt-equity", "d/e");
   const ratioTTMIdx = ratiosTable.headers.indexOf("TTM");
   const roceYearly = ratioTTMIdx >= 0 ? roceRow.filter((_, i) => i !== ratioTTMIdx) : roceRow;
   const roeYearly = ratioTTMIdx >= 0 ? roeRow.filter((_, i) => i !== ratioTTMIdx) : roeRow;
   const deYearly = ratioTTMIdx >= 0 ? deRow.filter((_, i) => i !== ratioTTMIdx) : deRow;
 
+  console.log("ROCE row found:", roceRow.length, "values");
+  console.log("ROE row found:", roeRow.length, "values");
+  console.log("D/E row found:", deRow.length, "values");
+
   // ── 4. Cash flow (CFO, Capex → FCF) ──
   const cf = extractTableData(html, "cash-flow");
+  if (cf.headers.length === 0) console.log("Cash flow section not found");
+  console.log("Cash flow row labels:", JSON.stringify(Object.keys(cf.rows)));
+
   const cfYears = cf.headers.filter(h => !h.includes("TTM"));
-  const cfoRow = findRow(cf.rows, "cash from operating");
+  const cfoRow = findRow(cf.rows, "cash from operating", "operating activity");
   const capexRow = findRow(cf.rows, "fixed assets purchased", "capex", "fixed assets");
   const cfTTMIdx = cf.headers.indexOf("TTM");
   const cfo = cfTTMIdx >= 0 ? cfoRow.filter((_, i) => i !== cfTTMIdx) : cfoRow;
@@ -251,8 +265,10 @@ function parseScreenerData(html: string) {
 
   // ── 5. Shareholding (promoter %) ──
   const sh = extractTableData(html, "shareholding");
+  console.log("Shareholding headers:", JSON.stringify(sh.headers));
+  console.log("Shareholding row labels:", JSON.stringify(Object.keys(sh.rows)));
   const shQuarters = sh.headers;
-  const promoterRow = findRow(sh.rows, "promoters");
+  const promoterRow = findRow(sh.rows, "promoters", "promoter");
 
   // ── 6. Build yearly entries ──
   // Use P&L years as primary, merge ratios data by matching year
