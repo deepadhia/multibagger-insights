@@ -19,6 +19,7 @@ import { DealsTab } from "@/components/DealsTab";
 import { ThesisScore } from "@/components/ThesisScore";
 import { ThesisTimeline } from "@/components/ThesisTimeline";
 import { ManagementCredibility } from "@/components/ManagementCredibility";
+import { ThesisDriftAlert } from "@/components/ThesisDriftAlert";
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus } from "@/lib/signals";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
