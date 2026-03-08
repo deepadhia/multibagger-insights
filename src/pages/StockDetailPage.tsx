@@ -981,6 +981,11 @@ export default function StockDetailPage() {
               <EmptyState text="No peer data. Click 'Financials' to fetch peer comparison from Screener." />
             )}
           </TabsContent>
+
+          {/* ═══ DEALS TAB ═══ */}
+          <TabsContent value="deals" className="space-y-4 mt-4">
+            <DealsTab stockId={stock.id} ticker={stock.ticker} />
+          </TabsContent>
         </Tabs>
       </div>
     </DashboardLayout>
