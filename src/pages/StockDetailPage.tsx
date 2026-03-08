@@ -52,7 +52,10 @@ export default function StockDetailPage() {
         body: { stock_id: stock.id, ticker: stock.ticker, screener_slug: stock.screener_slug || stock.ticker },
       });
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (data?.success === false) {
+        toast({ title: "Financials unavailable", description: data.error || `Could not fetch data for ${stock.ticker}`, variant: "destructive" });
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
       queryClient.invalidateQueries({ queryKey: ["financial-results", id] });
       toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
