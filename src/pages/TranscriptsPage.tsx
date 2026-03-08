@@ -73,7 +73,7 @@ export default function TranscriptsPage() {
 
       // 1. Upsert quarterly snapshot
       const { error: snapError } = await supabase
-        .from("quarterly_snapshots")
+        .from("quarterly_snapshots" as any)
         .upsert({
           stock_id: stockId,
           quarter: snap.quarter,
