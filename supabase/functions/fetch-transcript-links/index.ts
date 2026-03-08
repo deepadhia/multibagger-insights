@@ -31,13 +31,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    const transcripts: Array<{
+    type LinkItem = {
       title: string;
       date: string;
       source: string;
       url: string;
       type: string;
-    }> = [];
+    };
+
+    const transcripts: LinkItem[] = [];
+    const orderAnnouncements: LinkItem[] = [];
+
+    // Keywords that indicate the filing is NOT a transcript
+    const EXCLUDE_KEYWORDS = [
+      "intimation", "prior intimation", "regulation 30", "regulation 33",
+      "board meeting", "outcome of board", "compliance certificate",
+      "newspaper publication", "corrigendum", "clarification",
+      "record date", "dividend", "agm", "egm", "postal ballot",
+      "book closure", "loss of share", "duplicate share",
+      "change in director", "cessation", "appointment",
+      "resignation", "disclosure under", "voting results",
+      "scrutinizer report", "annual report", "notice of",
+    ];
+
+    // Keywords for new order wins
+    const ORDER_KEYWORDS = [
+      "new order", "order win", "order received", "order bagged",
+      "contract awarded", "letter of intent", "loi received",
+      "work order", "purchase order", "order book",
+    ];
 
     // === SOURCE 1: BSE Corporate Announcements ===
     const toDate = new Date();
