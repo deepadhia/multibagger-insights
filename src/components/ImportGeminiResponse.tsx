@@ -105,7 +105,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
     }
   };
 
-  const effectiveQuarter = quarterOverride || parsed?.quarterly_snapshot?.quarter || "";
+  const effectiveQuarter = (quarterOverride && quarterOverride !== "auto") ? quarterOverride : parsed?.quarterly_snapshot?.quarter || "";
 
   const handleCommit = async () => {
     if (!parsed || !effectiveQuarter) return;
