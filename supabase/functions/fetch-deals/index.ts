@@ -142,19 +142,26 @@ Deno.serve(async (req) => {
         const pitData = await pitResp.json();
         const trades = Array.isArray(pitData) ? pitData : pitData?.data || [];
         if (trades.length > 0) {
-          const rows = trades.map((d: any) => ({
-            stock_id,
-            trade_type: d.tkdAcquisitionfromDt ? 'sast' : 'insider',
-            person_name: d.acqName || d.acquirerName || 'Unknown',
-            person_category: d.personCategory || d.categoryOfPerson || null,
-            trade_date: d.acquisitionfromDt || d.date || new Date().toISOString().split('T')[0],
-            securities_type: d.secType || d.typeOfSecurity || null,
-            num_securities: parseFloat(d.secAcq || d.noOfSecurities || d.securitiesAcquired) || null,
-            avg_price: null,
-            trade_value: parseFloat(d.secVal || d.valueOfSecurity) || null,
-            mode_of_acquisition: d.tdpTransactionType || d.modeOfAcquisition || null,
-            exchange: 'NSE',
-          }));
+          const rows = trades.map((d: any) => {
+            const numSec = parseFloat(d.secAcq || d.noOfSecurities || d.securitiesAcquired) || null;
+            const tradeVal = parseFloat(d.secVal || d.valueOfSecurity) || null;
+            // Calculate avg_price from value/quantity if not directly available
+            const directPrice = parseFloat(d.befAcqSharesPer || d.avgPrice) || null;
+            const calcPrice = (tradeVal && numSec && numSec > 0) ? Math.round((tradeVal / numSec) * 100) / 100 : null;
+            return {
+              stock_id,
+              trade_type: d.tkdAcquisitionfromDt ? 'sast' : 'insider',
+              person_name: d.acqName || d.acquirerName || 'Unknown',
+              person_category: d.personCategory || d.categoryOfPerson || null,
+              trade_date: d.acquisitionfromDt || d.date || new Date().toISOString().split('T')[0],
+              securities_type: d.secType || d.typeOfSecurity || null,
+              num_securities: numSec,
+              avg_price: directPrice || calcPrice,
+              trade_value: tradeVal,
+              mode_of_acquisition: d.tdpTransactionType || d.modeOfAcquisition || null,
+              exchange: 'NSE',
+            };
+          });
           const { error } = await supabase.from('insider_trades').insert(rows);
           if (error) console.error('Insider trades insert error:', error);
           else results.insider_trades = rows.length;
