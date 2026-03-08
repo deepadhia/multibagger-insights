@@ -155,7 +155,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
     try {
       const snap = parsed.quarterly_snapshot;
 
-      // 1. Upsert quarterly snapshot
+      // 1. Upsert quarterly snapshot (with thesis_status)
       const { error: snapErr } = await supabase
         .from("quarterly_snapshots")
         .upsert({
@@ -166,6 +166,8 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
           red_flags: snap.red_flags || [],
           metrics: snap.metrics || {},
           raw_ai_output: parsed as any,
+          thesis_status: parsed.thesis_status?.status || null,
+          thesis_status_reason: parsed.thesis_status?.reason || null,
         }, { onConflict: "stock_id,quarter" });
 
       if (snapErr) throw snapErr;
