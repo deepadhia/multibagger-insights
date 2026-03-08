@@ -270,8 +270,11 @@ export default function StockDetailPage() {
         )}
 
         {/* ── THESIS + BUY PRICE + RESULTS DATE ── */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InvestmentThesisEditor stockId={stock.id} thesis={stock.investment_thesis} />
+          <MasterPromptEditor stockId={stock.id} trackingDirectives={stock.tracking_directives} metricKeys={stock.metric_keys} />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4">
           {stock.buy_price && (
             <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
               <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Buy Price</p>
