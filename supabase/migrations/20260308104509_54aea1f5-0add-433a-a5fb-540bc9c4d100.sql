@@ -1,0 +1,1 @@
+ALTER TABLE stocks ADD COLUMN metric_keys JSONB DEFAULT '["revenue_growth", "opm", "pat_growth", "order_book"]'::jsonb;

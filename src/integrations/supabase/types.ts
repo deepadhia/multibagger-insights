@@ -534,6 +534,7 @@ export type Database = {
           created_at: string
           id: string
           investment_thesis: string | null
+          metric_keys: Json | null
           next_results_date: string | null
           screener_slug: string | null
           sector: string | null
@@ -547,6 +548,7 @@ export type Database = {
           created_at?: string
           id?: string
           investment_thesis?: string | null
+          metric_keys?: Json | null
           next_results_date?: string | null
           screener_slug?: string | null
           sector?: string | null
@@ -560,6 +562,7 @@ export type Database = {
           created_at?: string
           id?: string
           investment_thesis?: string | null
+          metric_keys?: Json | null
           next_results_date?: string | null
           screener_slug?: string | null
           sector?: string | null
