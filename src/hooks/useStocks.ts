@@ -85,3 +85,35 @@ export function useAllAnalysis() {
     },
   });
 }
+
+export function useManagementPromises(stockId: string) {
+  return useQuery({
+    queryKey: ["management-promises", stockId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("management_promises")
+        .select("*")
+        .eq("stock_id", stockId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!stockId,
+  });
+}
+
+export function useQuarterlySnapshots(stockId: string) {
+  return useQuery({
+    queryKey: ["quarterly-snapshots", stockId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("quarterly_snapshots")
+        .select("*")
+        .eq("stock_id", stockId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!stockId,
+  });
+}

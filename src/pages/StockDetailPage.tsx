@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
+import { InvestmentThesisEditor } from "@/components/InvestmentThesisEditor";
+import { PromisesTab } from "@/components/PromisesTab";
+import { SnapshotsTab } from "@/components/SnapshotsTab";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
@@ -246,29 +249,20 @@ export default function StockDetailPage() {
         )}
 
         {/* ── THESIS + BUY PRICE ── */}
-        {(stock.investment_thesis || stock.buy_price) && (
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
-            {stock.investment_thesis && (
-              <Card className="p-4 bg-card border-border card-glow">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <FileText className="h-3 w-3" /> Investment Thesis
-                </h3>
-                <p className="text-sm text-foreground leading-relaxed">{stock.investment_thesis}</p>
-              </Card>
-            )}
-            {stock.buy_price && (
-              <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Buy Price</p>
-                <p className="text-2xl font-mono font-bold text-foreground">₹{Number(stock.buy_price).toLocaleString()}</p>
-                {latestPrice && stock.buy_price && (
-                  <p className={`font-mono text-xs mt-1 ${Number(latestPrice.price) >= Number(stock.buy_price) ? "text-terminal-green" : "text-terminal-red"}`}>
-                    {((Number(latestPrice.price) - Number(stock.buy_price)) / Number(stock.buy_price) * 100).toFixed(1)}% return
-                  </p>
-                )}
-              </Card>
-            )}
-          </div>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+          <InvestmentThesisEditor stockId={stock.id} thesis={stock.investment_thesis} />
+          {stock.buy_price && (
+            <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
+              <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Buy Price</p>
+              <p className="text-2xl font-mono font-bold text-foreground">₹{Number(stock.buy_price).toLocaleString()}</p>
+              {latestPrice && stock.buy_price && (
+                <p className={`font-mono text-xs mt-1 ${Number(latestPrice.price) >= Number(stock.buy_price) ? "text-terminal-green" : "text-terminal-red"}`}>
+                  {((Number(latestPrice.price) - Number(stock.buy_price)) / Number(stock.buy_price) * 100).toFixed(1)}% return
+                </p>
+              )}
+            </Card>
+          )}
+        </div>
 
         {/* ── MAIN TABBED CONTENT ── */}
         <Tabs defaultValue="overview" className="w-full">
@@ -284,6 +278,12 @@ export default function StockDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="commitments" className="font-mono text-xs gap-1.5">
               <Shield className="h-3 w-3" /> Commitments
+            </TabsTrigger>
+            <TabsTrigger value="promises" className="font-mono text-xs gap-1.5">
+              <Target className="h-3 w-3" /> Promises
+            </TabsTrigger>
+            <TabsTrigger value="snapshots" className="font-mono text-xs gap-1.5">
+              <FileText className="h-3 w-3" /> Snapshots
             </TabsTrigger>
             <TabsTrigger value="peers" className="font-mono text-xs gap-1.5">
               <Users className="h-3 w-3" /> Peers
@@ -863,6 +863,16 @@ export default function StockDetailPage() {
             ) : (
               <EmptyState text="No commitments tracked yet. Analyze a transcript to extract management commitments." />
             )}
+          </TabsContent>
+
+          {/* ═══ PROMISES TAB ═══ */}
+          <TabsContent value="promises" className="space-y-4 mt-4">
+            <PromisesTab stockId={id!} />
+          </TabsContent>
+
+          {/* ═══ SNAPSHOTS TAB ═══ */}
+          <TabsContent value="snapshots" className="space-y-4 mt-4">
+            <SnapshotsTab stockId={id!} />
           </TabsContent>
 
           {/* ═══ PEERS TAB ═══ */}
