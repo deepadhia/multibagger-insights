@@ -31,9 +31,21 @@ serve(async (req) => {
     const html = await fetchScreenerPage(slug, sessionId, csrfToken);
 
     if (!html) {
-      return new Response(JSON.stringify({ error: "Failed to fetch Screener.in page" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // Try ticker as fallback if slug failed
+      let fallbackHtml: string | null = null;
+      if (screener_slug && screener_slug !== ticker) {
+        fallbackHtml = await fetchScreenerPage(ticker, sessionId, csrfToken);
+      }
+      if (!fallbackHtml) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Could not find company "${slug}" on Screener.in. Please check the screener_slug in your stock settings.`,
+        }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Use fallback
+      return processAndStore(fallbackHtml, stock_id, corsHeaders);
     }
 
     console.log("HTML length:", html.length);
