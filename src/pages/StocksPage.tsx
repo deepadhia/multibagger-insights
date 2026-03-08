@@ -19,6 +19,7 @@ export default function StocksPage() {
   const { toast } = useToast();
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [refreshingFinancials, setRefreshingFinancials] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const handleRefreshAllPrices = async () => {
     if (!stocks?.length) return;
