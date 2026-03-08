@@ -258,6 +258,36 @@ export type Database = {
           },
         ]
       }
+      sector_indices: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          index_name: string
+          index_symbol: string
+          price: number
+          sector: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          index_name: string
+          index_symbol: string
+          price: number
+          sector: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          index_name?: string
+          index_symbol?: string
+          price?: number
+          sector?: string
+        }
+        Relationships: []
+      }
       shareholding: {
         Row: {
           created_at: string

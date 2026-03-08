@@ -3,14 +3,16 @@ import { StatsCard } from "@/components/StatsCard";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
 import { useStocks, useAllAnalysis } from "@/hooks/useStocks";
-import { BarChart3, TrendingUp, FileText, Target, Activity, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { BarChart3, TrendingUp, FileText, Target, Activity, ArrowUpRight, ArrowDownRight, RefreshCw, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 function useAllPrices() {
   return useQuery({
@@ -26,11 +28,29 @@ function useAllPrices() {
   });
 }
 
+function useSectorIndices() {
+  return useQuery({
+    queryKey: ["sector-indices"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sector_indices")
+        .select("*")
+        .order("date", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 const Index = () => {
   const { data: stocks } = useStocks();
   const { data: analyses } = useAllAnalysis();
   const { data: allPrices } = useAllPrices();
+  const { data: sectorIndicesData } = useSectorIndices();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [refreshingSectors, setRefreshingSectors] = useState(false);
 
   const totalStocks = stocks?.length || 0;
   const coreStocks = stocks?.filter(s => s.category === "Core").length || 0;
@@ -92,30 +112,60 @@ const Index = () => {
     }).sort((a, b) => (b.return1m ?? -999) - (a.return1m ?? -999));
   }, [stocks, allPrices]);
 
-  // Sector performance
-  const sectorPerformance = useMemo(() => {
-    if (!stockReturns.length) return [];
+  // Nifty sector index performance from stored data
+  const niftySectorPerformance = useMemo(() => {
+    if (!sectorIndicesData || sectorIndicesData.length === 0) return [];
 
-    const sectorMap: Record<string, { returns1m: number[]; returns3m: number[]; returns1y: number[] }> = {};
+    const now = new Date();
+    const oneMonthAgo = new Date(now); oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    const threeMonthsAgo = new Date(now); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const oneYearAgo = new Date(now); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    for (const sr of stockReturns) {
-      const sector = sr.stock.sector || "Unknown";
-      if (!sectorMap[sector]) sectorMap[sector] = { returns1m: [], returns3m: [], returns1y: [] };
-      if (sr.return1m !== null) sectorMap[sector].returns1m.push(sr.return1m);
-      if (sr.return3m !== null) sectorMap[sector].returns3m.push(sr.return3m);
-      if (sr.return1y !== null) sectorMap[sector].returns1y.push(sr.return1y);
+    // Group by index
+    const byIndex: Record<string, Array<{ date: string; price: number; index_name: string; sector: string }>> = {};
+    for (const row of sectorIndicesData) {
+      if (!byIndex[row.index_symbol]) byIndex[row.index_symbol] = [];
+      byIndex[row.index_symbol].push({ date: row.date, price: Number(row.price), index_name: row.index_name, sector: row.sector });
     }
 
-    return Object.entries(sectorMap)
-      .map(([sector, data]) => ({
-        sector,
-        avg1m: data.returns1m.length ? Math.round(data.returns1m.reduce((s, v) => s + v, 0) / data.returns1m.length * 10) / 10 : null,
-        avg3m: data.returns3m.length ? Math.round(data.returns3m.reduce((s, v) => s + v, 0) / data.returns3m.length * 10) / 10 : null,
-        avg1y: data.returns1y.length ? Math.round(data.returns1y.reduce((s, v) => s + v, 0) / data.returns1y.length * 10) / 10 : null,
-        count: new Set([...data.returns1m, ...data.returns3m, ...data.returns1y]).size || 1,
-      }))
-      .sort((a, b) => (b.avg1m ?? -999) - (a.avg1m ?? -999));
-  }, [stockReturns]);
+    return Object.entries(byIndex).map(([symbol, prices]) => {
+      prices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const latest = prices[0];
+      const latestPrice = latest.price;
+
+      const findClosest = (target: Date) => {
+        for (const p of prices) {
+          if (new Date(p.date) <= target) return p.price;
+        }
+        return prices[prices.length - 1]?.price;
+      };
+
+      const calc = (old: number | undefined) =>
+        old && old > 0 ? Math.round(((latestPrice - old) / old) * 1000) / 10 : null;
+
+      return {
+        name: latest.index_name,
+        sector: latest.sector,
+        latestPrice,
+        return1m: calc(findClosest(oneMonthAgo)),
+        return3m: calc(findClosest(threeMonthsAgo)),
+        return1y: calc(findClosest(oneYearAgo)),
+      };
+    }).sort((a, b) => (b.return1m ?? -999) - (a.return1m ?? -999));
+  }, [sectorIndicesData]);
+
+  const handleRefreshSectorIndices = async () => {
+    setRefreshingSectors(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-sector-indices");
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["sector-indices"] });
+      toast({ title: "Sector indices updated", description: data?.message });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+    setRefreshingSectors(false);
+  };
 
   // Build chart data for sentiment by stock
   const sentimentByStock = analyses?.reduce((acc, a) => {
@@ -217,37 +267,53 @@ const Index = () => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Sector Performance */}
-          {sectorPerformance.length > 0 && (
-            <Card className="p-4 bg-card border-border card-glow">
-              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground mb-4">
-                Sector Performance
+          {/* Nifty Sector Index Performance */}
+          <Card className="p-4 bg-card border-border card-glow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Nifty Sector Indices
               </h3>
-              <div className="space-y-2">
-                {sectorPerformance.map(({ sector, avg1m, avg3m, avg1y }) => (
-                  <div key={sector} className="p-3 bg-muted rounded border border-border/50 flex items-center justify-between">
-                    <div>
-                      <span className="font-mono text-sm font-semibold text-foreground">{sector}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefreshSectorIndices}
+                disabled={refreshingSectors}
+                className="font-mono text-xs h-7 px-2"
+              >
+                {refreshingSectors ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              </Button>
+            </div>
+            {niftySectorPerformance.length > 0 ? (
+              <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+                {niftySectorPerformance.map(({ name, latestPrice, return1m, return3m, return1y }) => (
+                  <div key={name} className="p-2.5 bg-muted rounded border border-border/50 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <span className="font-mono text-xs font-semibold text-foreground truncate block">{name}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{latestPrice?.toLocaleString()}</span>
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-5 shrink-0">
                       <div className="text-center">
                         <p className="text-[9px] text-muted-foreground font-mono mb-0.5">1M</p>
-                        <ReturnBadge value={avg1m} />
+                        <ReturnBadge value={return1m} />
                       </div>
                       <div className="text-center">
                         <p className="text-[9px] text-muted-foreground font-mono mb-0.5">3M</p>
-                        <ReturnBadge value={avg3m} />
+                        <ReturnBadge value={return3m} />
                       </div>
                       <div className="text-center">
                         <p className="text-[9px] text-muted-foreground font-mono mb-0.5">1Y</p>
-                        <ReturnBadge value={avg1y} />
+                        <ReturnBadge value={return1y} />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </Card>
-          )}
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-muted-foreground font-mono text-sm">
+                Click refresh to fetch Nifty sector data
+              </div>
+            )}
+          </Card>
 
           {/* Sentiment Chart */}
           <Card className="p-4 bg-card border-border card-glow">
