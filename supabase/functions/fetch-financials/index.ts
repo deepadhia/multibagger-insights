@@ -301,23 +301,36 @@ function parseScreenerData(html: string) {
   const cfo = cfTTMIdx >= 0 ? cfoRow.filter((_, i) => i !== cfTTMIdx) : cfoRow;
   const capex = cfTTMIdx >= 0 ? capexRow.filter((_, i) => i !== cfTTMIdx) : capexRow;
 
-  // ── 5. Shareholding (promoter %) — quarterly, map to nearest FY year ──
+  // ── 5. Shareholding — quarterly data for Promoter, FII, DII, Public, Others ──
   const sh = extractTableData(html, "shareholding");
   console.log("Shareholding row labels:", JSON.stringify(Object.keys(sh.rows)));
   const shQuarters = sh.headers;
   const promoterRow = findRow(sh.rows, "promoter");
+  const fiiRow = findRow(sh.rows, "fii", "foreign");
+  const diiRow = findRow(sh.rows, "dii", "domestic");
+  const publicRow = findRow(sh.rows, "public");
+  const othersRow = findRow(sh.rows, "other", "government");
   console.log("Promoter row found:", promoterRow.length, "values");
+
+  // Build quarterly shareholding entries
+  const shareholding = shQuarters.map((q, i) => ({
+    quarter: q,
+    promoters: promoterRow[i] ?? null,
+    fiis: fiiRow[i] ?? null,
+    diis: diiRow[i] ?? null,
+    public_holding: publicRow[i] ?? null,
+    others: othersRow[i] ?? null,
+  }));
 
   // Build a map: year → promoter% (use March quarter for FY, or latest available)
   const promoterByYear: Map<number, number> = new Map();
   for (let i = 0; i < shQuarters.length; i++) {
-    const qLabel = shQuarters[i]; // e.g. "Mar 2023", "Dec 2024"
+    const qLabel = shQuarters[i];
     const yearMatch = qLabel.match(/(\d{4})/);
     if (!yearMatch) continue;
     const year = parseInt(yearMatch[1]);
     const val = promoterRow[i];
     if (!val || val === 0) continue;
-    // Prefer March quarter (FY end), but overwrite with latest
     if (qLabel.includes("Mar")) {
       promoterByYear.set(year, val);
     } else if (!promoterByYear.has(year)) {
