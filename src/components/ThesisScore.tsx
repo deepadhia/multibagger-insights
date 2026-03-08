@@ -5,11 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-interface Signal {
-  label: string;
-  type: "bullish" | "warning" | "bearish";
-}
+import { calculateThesisScore, getCategoryBreakdown, type Signal } from "@/lib/signals";
 
 interface ThesisScoreProps {
   signals: Signal[];
@@ -18,13 +14,11 @@ interface ThesisScoreProps {
 export function ThesisScore({ signals }: ThesisScoreProps) {
   if (signals.length === 0) return null;
 
+  const score = calculateThesisScore(signals);
+  const breakdown = getCategoryBreakdown(signals);
   const bullish = signals.filter(s => s.type === "bullish");
   const bearish = signals.filter(s => s.type === "bearish");
   const warning = signals.filter(s => s.type === "warning");
-
-  // Score: bullish = +8, warning = -5, bearish = -12, base 50, clamp 0-100
-  const raw = 50 + (bullish.length * 8) - (warning.length * 5) - (bearish.length * 12);
-  const score = Math.max(0, Math.min(100, raw));
 
   const getVerdict = () => {
     if (score >= 75) return { label: "Strong Buy", color: "text-terminal-green", icon: TrendingUp, progressColor: "bg-terminal-green" };
@@ -46,37 +40,35 @@ export function ThesisScore({ signals }: ThesisScoreProps) {
             <TooltipTrigger asChild>
               <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help hover:text-foreground transition-colors" />
             </TooltipTrigger>
-            <TooltipContent side="left" className="max-w-xs bg-popover border-border p-3">
-              <p className="font-mono text-[10px] text-muted-foreground mb-2">Base 50 · Bullish +8 · Warning −5 · Bearish −12</p>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {bearish.length > 0 && (
-                  <div>
-                    <p className="font-mono text-[10px] font-semibold text-terminal-red mb-0.5">Bearish (−12 each)</p>
-                    {bearish.map((s, i) => (
-                      <p key={i} className="font-mono text-[10px] text-terminal-red/80 pl-2">✗ {s.label}</p>
-                    ))}
+            <TooltipContent side="left" className="max-w-sm bg-popover border-border p-3">
+              <p className="font-mono text-[10px] text-muted-foreground mb-2">Category-weighted scoring (Financial 40% · Concall 30% · Credibility 20% · Shareholding 10%)</p>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {breakdown.map(cat => (
+                  <div key={cat.category} className="border-b border-border/30 pb-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] font-semibold text-foreground">{cat.label}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {Math.round(cat.weight * 100)}% → <span className={cat.score >= 60 ? "text-terminal-green" : cat.score >= 40 ? "text-terminal-amber" : "text-terminal-red"}>{cat.score}</span>
+                      </span>
+                    </div>
+                    <div className="flex gap-2 font-mono text-[9px] mt-0.5">
+                      {cat.bullish > 0 && <span className="text-terminal-green">✓{cat.bullish}</span>}
+                      {cat.warning > 0 && <span className="text-terminal-amber">⚠{cat.warning}</span>}
+                      {cat.bearish > 0 && <span className="text-terminal-red">✗{cat.bearish}</span>}
+                    </div>
                   </div>
-                )}
-                {warning.length > 0 && (
-                  <div>
-                    <p className="font-mono text-[10px] font-semibold text-terminal-amber mb-0.5">Warning (−5 each)</p>
-                    {warning.map((s, i) => (
-                      <p key={i} className="font-mono text-[10px] text-terminal-amber/80 pl-2">⚠ {s.label}</p>
-                    ))}
-                  </div>
-                )}
-                {bullish.length > 0 && (
-                  <div>
-                    <p className="font-mono text-[10px] font-semibold text-terminal-green mb-0.5">Bullish (+8 each)</p>
-                    {bullish.map((s, i) => (
-                      <p key={i} className="font-mono text-[10px] text-terminal-green/80 pl-2">✓ {s.label}</p>
-                    ))}
-                  </div>
-                )}
+                ))}
               </div>
-              <p className="font-mono text-[10px] text-muted-foreground mt-2 pt-1.5 border-t border-border">
-                50 + ({bullish.length}×8) − ({warning.length}×5) − ({bearish.length}×12) = {raw} → <span className={verdict.color}>{score}</span>
-              </p>
+              <div className="mt-2 pt-1.5 border-t border-border">
+                <div className="space-y-1">
+                  {bearish.length > 0 && bearish.slice(0, 4).map((s, i) => (
+                    <p key={i} className="font-mono text-[9px] text-terminal-red/80">✗ {s.label}</p>
+                  ))}
+                  {warning.length > 0 && warning.slice(0, 3).map((s, i) => (
+                    <p key={i} className="font-mono text-[9px] text-terminal-amber/80">⚠ {s.label}</p>
+                  ))}
+                </div>
+              </div>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -95,6 +87,21 @@ export function ThesisScore({ signals }: ThesisScoreProps) {
             />
           </div>
         </div>
+      </div>
+      {/* Category mini-bars */}
+      <div className="mt-3 space-y-1">
+        {breakdown.map(cat => (
+          <div key={cat.category} className="flex items-center gap-2">
+            <span className="font-mono text-[9px] text-muted-foreground w-20 truncate">{cat.label}</span>
+            <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${cat.score >= 60 ? "bg-terminal-green/70" : cat.score >= 40 ? "bg-terminal-amber/70" : "bg-terminal-red/70"}`}
+                style={{ width: `${cat.score}%` }}
+              />
+            </div>
+            <span className="font-mono text-[9px] text-muted-foreground w-5 text-right">{cat.score}</span>
+          </div>
+        ))}
       </div>
       <div className="flex items-center gap-3 mt-2 font-mono text-[10px]">
         <span className="text-terminal-green">✓ {bullish.length} bullish</span>
