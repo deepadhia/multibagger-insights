@@ -8,3 +8,5 @@ export type Transcript = Database["public"]["Tables"]["transcripts"]["Row"];
 export type TranscriptAnalysis = Database["public"]["Tables"]["transcript_analysis"]["Row"];
 export type ManagementCommitment = Database["public"]["Tables"]["management_commitments"]["Row"];
 export type FinancialResult = Database["public"]["Tables"]["financial_results"]["Row"];
+export type Shareholding = Database["public"]["Tables"]["shareholding"]["Row"];
+export type PeerComparison = Database["public"]["Tables"]["peer_comparison"]["Row"];
