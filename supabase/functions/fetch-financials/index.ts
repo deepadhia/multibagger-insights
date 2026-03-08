@@ -473,5 +473,52 @@ function parseScreenerData(html: string) {
     capex: null,
   }));
 
-  return { ratios, yearly, quarterly, shareholding };
+  // ── 8. Peer comparison ──
+  const peers: any[] = [];
+  const peerSection = html.match(/<section id="peers"[\s\S]*?<\/section>/);
+  if (peerSection) {
+    const peerTable = peerSection[0].match(/<table[\s\S]*?<\/table>/);
+    if (peerTable) {
+      const peerTrs = peerTable[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
+      for (const tr of peerTrs) {
+        // Skip header row and median row
+        if (tr.includes("<th")) continue;
+        if (tr.toLowerCase().includes("median:")) continue;
+        
+        const tds = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
+        if (tds.length < 10) continue;
+        
+        // Extract peer name and slug from link
+        const nameCell = tds[1] || "";
+        const nameMatch = nameCell.match(/<a[^>]*href="\/company\/([^/"]+)/);
+        const peerSlug = nameMatch ? nameMatch[1] : null;
+        const peerName = nameCell.replace(/<[^>]+>/g, "").trim();
+        
+        if (!peerName) continue;
+        
+        const parseVal = (cell: string) => {
+          const raw = cell.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, "").replace(/,/g, "").replace(/%/g, "").trim();
+          const num = parseFloat(raw);
+          return isNaN(num) ? null : num;
+        };
+        
+        peers.push({
+          peer_name: peerName,
+          peer_slug: peerSlug,
+          cmp: parseVal(tds[2] || ""),
+          pe: parseVal(tds[3] || ""),
+          market_cap: parseVal(tds[4] || ""),
+          div_yield: parseVal(tds[5] || ""),
+          np_qtr: parseVal(tds[6] || ""),
+          qtr_profit_var: parseVal(tds[7] || ""),
+          sales_qtr: parseVal(tds[8] || ""),
+          qtr_sales_var: parseVal(tds[9] || ""),
+          roce: parseVal(tds[10] || ""),
+        });
+      }
+    }
+  }
+  console.log("Parsed peers count:", peers.length);
+
+  return { ratios, yearly, quarterly, shareholding, peers };
 }
