@@ -199,6 +199,16 @@ export default function StocksPage() {
               {backfilling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               {backfilling ? "Backfilling..." : "Backfill 3Y Prices"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchResultsDates}
+              disabled={fetchingResults}
+              className="font-mono"
+            >
+              {fetchingResults ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {fetchingResults ? "Fetching..." : "Fetch Results Dates"}
+            </Button>
             <AddStockDialog />
           </div>
         </div>
