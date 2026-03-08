@@ -12,6 +12,7 @@ interface Props {
     tracking_directives?: string | null;
     investment_thesis?: string | null;
     sector?: string | null;
+    metric_keys?: string[] | null;
   };
 }
 
