@@ -87,8 +87,73 @@ export function SnapshotsTab({ stockId }: Props) {
     );
   }
 
+  // Build QoQ comparison data
+  const qoqData = snapshots.length >= 2 ? buildQoQComparison(snapshots) : null;
+
   return (
     <div className="space-y-3">
+      {/* ═══ QoQ Comparison Table ═══ */}
+      {qoqData && qoqData.metricKeys.length > 0 && (
+        <Card className="bg-card border-border overflow-hidden">
+          <div className="p-4 border-b border-border/50">
+            <h3 className="font-mono text-xs font-semibold text-foreground flex items-center gap-2">
+              <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+              Quarter-over-Quarter Comparison
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="text-left p-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground w-[160px]">
+                    Metric
+                  </th>
+                  {qoqData.quarters.map((q) => (
+                    <th key={q} className="text-center p-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground min-w-[140px]">
+                      {q}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {qoqData.metricKeys.map((key) => (
+                  <tr key={key} className="border-b border-border/30 hover:bg-muted/20">
+                    <td className="p-3 font-mono text-xs text-foreground font-medium capitalize">
+                      {key.replace(/_/g, " ")}
+                    </td>
+                    {qoqData.quarters.map((q, qi) => {
+                      const val = qoqData.values[q]?.[key];
+                      const prevQ = qi < qoqData.quarters.length - 1 ? qoqData.quarters[qi + 1] : null;
+                      const prevVal = prevQ ? qoqData.values[prevQ]?.[key] : null;
+                      const displayVal = val ? extractValue(val) : "—";
+                      const trend = val && prevVal ? getTrend(val, prevVal) : null;
+
+                      return (
+                        <td key={q} className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="font-mono text-xs text-foreground">{displayVal}</span>
+                            {trend && (
+                              <span className={`flex-shrink-0 ${
+                                trend === "up" ? "text-terminal-green" :
+                                trend === "down" ? "text-terminal-red" :
+                                "text-muted-foreground"
+                              }`}>
+                                {trend === "up" && <TrendingUp className="h-3 w-3" />}
+                                {trend === "down" && <TrendingDown className="h-3 w-3" />}
+                                {trend === "flat" && <Minus className="h-3 w-3" />}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
       {snapshots.map((snap) => {
         const dodged = (Array.isArray(snap.dodged_questions) ? snap.dodged_questions : []) as string[];
         const flags = (Array.isArray(snap.red_flags) ? snap.red_flags : []) as string[];
