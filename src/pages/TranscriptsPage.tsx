@@ -75,6 +75,7 @@ export default function TranscriptsPage() {
 
     try {
       const snap = payload.quarterly_snapshot;
+      const activeQuarter = quarter.trim();
 
       // 1. Upsert quarterly snapshot
       const { error: snapError } = await supabase
