@@ -46,7 +46,11 @@ const Index = () => {
   const { data: stocks } = useStocks();
   const { data: analyses } = useAllAnalysis();
   const { data: allPrices } = useAllPrices();
+  const { data: sectorIndicesData } = useSectorIndices();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [refreshingSectors, setRefreshingSectors] = useState(false);
 
   const totalStocks = stocks?.length || 0;
   const coreStocks = stocks?.filter(s => s.category === "Core").length || 0;
