@@ -103,6 +103,16 @@ export default function StockDetailPage() {
   const latestFinancial = financials?.[financials.length - 1];
   const latestPrice = prices?.[0];
 
+  // Find latest non-null value for each metric across all years (iterate backwards)
+  const latestVal = (key: string) => {
+    if (!financials) return null;
+    for (let i = financials.length - 1; i >= 0; i--) {
+      const v = (financials[i] as any)[key];
+      if (v !== null && v !== undefined && v !== 0) return v;
+    }
+    return null;
+  };
+
   const achievedCount = commitments?.filter(c => c.status === "Achieved").length || 0;
   const totalCommitments = commitments?.length || 0;
   const credibility = totalCommitments > 0 ? Math.round((achievedCount / totalCommitments) * 100) : null;
@@ -185,16 +195,16 @@ export default function StockDetailPage() {
         </div>
 
         {/* ── TOP RATIOS BAR ── */}
-        {latestFinancial && (
-          <div className="grid grid-cols-3 md:grid-cols-8 gap-1">
-            <RatioCard label="ROCE" value={latestFinancial.roce} suffix="%" good={(latestFinancial.roce ?? 0) >= 15} />
-            <RatioCard label="ROE" value={latestFinancial.roe} suffix="%" good={(latestFinancial.roe ?? 0) >= 15} />
-            <RatioCard label="D/E" value={latestFinancial.debt_equity} good={(latestFinancial.debt_equity ?? 999) <= 1} />
-            <RatioCard label="OPM" value={(latestFinancial as any).opm} suffix="%" good={((latestFinancial as any).opm ?? 0) >= 15} />
-            <RatioCard label="Rev Growth" value={latestFinancial.revenue_growth} suffix="%" good={(latestFinancial.revenue_growth ?? 0) >= 15} />
-            <RatioCard label="Profit Growth" value={latestFinancial.profit_growth} suffix="%" good={(latestFinancial.profit_growth ?? 0) >= 15} />
-            <RatioCard label="EPS" value={(latestFinancial as any).eps} good={((latestFinancial as any).eps ?? 0) > 0} />
-            <RatioCard label="Promoter %" value={latestFinancial.promoter_holding} suffix="%" good={(latestFinancial.promoter_holding ?? 0) >= 50} />
+        {financials && financials.length > 0 && (
+          <div className="grid grid-cols-4 md:grid-cols-8 gap-1">
+            <RatioCard label="ROCE" value={latestVal("roce")} suffix="%" good={(latestVal("roce") ?? 0) >= 15} />
+            <RatioCard label="ROE" value={latestVal("roe")} suffix="%" good={(latestVal("roe") ?? 0) >= 15} />
+            <RatioCard label="D/E" value={latestVal("debt_equity")} good={(latestVal("debt_equity") ?? 999) <= 1} />
+            <RatioCard label="OPM" value={latestVal("opm")} suffix="%" good={(latestVal("opm") ?? 0) >= 15} />
+            <RatioCard label="Rev Growth" value={latestVal("revenue_growth")} suffix="%" good={(latestVal("revenue_growth") ?? 0) >= 15} />
+            <RatioCard label="Prof Growth" value={latestVal("profit_growth")} suffix="%" good={(latestVal("profit_growth") ?? 0) >= 15} />
+            <RatioCard label="EPS" value={latestVal("eps")} good={(latestVal("eps") ?? 0) > 0} />
+            <RatioCard label="Promoter %" value={latestVal("promoter_holding")} suffix="%" good={(latestVal("promoter_holding") ?? 0) >= 50} />
           </div>
         )}
 
