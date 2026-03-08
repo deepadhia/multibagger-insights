@@ -35,16 +35,37 @@ async function fetchYahooQuote(symbol: string): Promise<NormalizedQuote | null> 
     const price = Number(meta?.regularMarketPrice);
     if (!Number.isFinite(price) || price <= 0) return null;
 
-    const previousClose = Number(meta?.chartPreviousClose);
-    const changePercent = Number.isFinite(previousClose) && previousClose > 0
-      ? ((price - previousClose) / previousClose) * 100
-      : null;
+    // Calculate daily change from the last two closes in the time series
+    const closes = result?.indicators?.quote?.[0]?.close;
+    const timestamps = result?.timestamp;
+    let changePercent: number | null = null;
+
+    if (closes && timestamps && closes.length >= 2) {
+      // Find the last two valid closes
+      const validCloses: number[] = [];
+      for (let i = closes.length - 1; i >= 0 && validCloses.length < 2; i--) {
+        const c = Number(closes[i]);
+        if (Number.isFinite(c) && c > 0) validCloses.push(c);
+      }
+      if (validCloses.length === 2) {
+        const [latestClose, prevClose] = validCloses;
+        changePercent = ((price - prevClose) / prevClose) * 100;
+      }
+    }
+
+    // Fallback to previousClose from meta if time series didn't work
+    if (changePercent === null) {
+      const previousClose = Number(meta?.previousClose ?? meta?.chartPreviousClose);
+      if (Number.isFinite(previousClose) && previousClose > 0) {
+        changePercent = ((price - previousClose) / previousClose) * 100;
+      }
+    }
 
     return {
       symbol,
       price,
       volume: Number.isFinite(meta?.regularMarketVolume) ? Number(meta.regularMarketVolume) : null,
-      change_percent: changePercent ? Math.round(changePercent * 100) / 100 : null,
+      change_percent: changePercent !== null ? Math.round(changePercent * 100) / 100 : null,
       date: formatDate(Number(meta?.regularMarketTime)),
     };
   } catch {
