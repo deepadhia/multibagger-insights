@@ -19,6 +19,7 @@ import { DealsTab } from "@/components/DealsTab";
 import { ThesisScore } from "@/components/ThesisScore";
 import { ThesisTimeline } from "@/components/ThesisTimeline";
 import { ManagementCredibility } from "@/components/ManagementCredibility";
+import { ThesisDriftAlert } from "@/components/ThesisDriftAlert";
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus } from "@/lib/signals";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
@@ -255,6 +256,15 @@ export default function StockDetailPage() {
             <RatioCard label="Promoter %" value={latestVal("promoter_holding")} suffix="%" good={(latestVal("promoter_holding") ?? 0) >= 50} />
           </div>
         )}
+
+        {/* ── THESIS DRIFT ALERT ── */}
+        {(() => {
+          const latestSnap = snapshots?.[0] as any;
+          const rawOut = latestSnap?.raw_ai_output as any;
+          const driftStatus = latestSnap?.thesis_drift_status || rawOut?.snapshot?.thesis_drift?.status || null;
+          const driftReason = rawOut?.snapshot?.thesis_drift?.reason || null;
+          return <ThesisDriftAlert driftStatus={driftStatus} driftReason={driftReason} />;
+        })()}
 
         {/* ── THESIS SCORE + MULTIBAGGER SIGNALS ── */}
         {signals.length > 0 && (

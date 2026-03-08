@@ -9,8 +9,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, MessageSquare, FileText, Code, Save, Loader2,
-  ChevronDown, ChevronRight, BarChart3, TrendingUp, TrendingDown, Minus, ArrowRightLeft, Trash2
+  ChevronDown, ChevronRight, BarChart3, TrendingUp, TrendingDown, Minus, ArrowRightLeft, Trash2,
+  Zap,
 } from "lucide-react";
+import { ThesisDriftAlert } from "@/components/ThesisDriftAlert";
 import {
   Collapsible,
   CollapsibleContent,
@@ -158,9 +160,16 @@ export function SnapshotsTab({ stockId }: Props) {
       {snapshots.map((snap) => {
         const dodged = (Array.isArray(snap.dodged_questions) ? snap.dodged_questions : []) as string[];
         const flags = (Array.isArray(snap.red_flags) ? snap.red_flags : []) as string[];
-        const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, string>;
+        const metrics = (snap.metrics && typeof snap.metrics === "object" ? snap.metrics : {}) as Record<string, unknown>;
         const isEditing = editingId === snap.id;
         const isOpen = effectiveExpanded === snap.id;
+        const snapAny = snap as any;
+        const rawOutput = snap.raw_ai_output as any;
+        const driftStatus = snapAny.thesis_drift_status || rawOutput?.snapshot?.thesis_drift?.status || null;
+        const driftReason = rawOutput?.snapshot?.thesis_drift?.reason || null;
+        const signals = rawOutput?.signals as { bullish?: string[]; warnings?: string[]; bearish?: string[] } | undefined;
+        const confidenceScore = snapAny.confidence_score ?? rawOutput?.snapshot?.confidence_score ?? null;
+        const thesisMomentum = snapAny.thesis_momentum || rawOutput?.snapshot?.thesis_momentum || null;
 
         return (
           <Collapsible
@@ -186,6 +195,35 @@ export function SnapshotsTab({ stockId }: Props) {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {snap.thesis_status && (
+                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                        snap.thesis_status === "strengthening" ? "text-terminal-green border-terminal-green/30" :
+                        snap.thesis_status === "weakening" ? "text-terminal-amber border-terminal-amber/30" :
+                        snap.thesis_status === "broken" ? "text-terminal-red border-terminal-red/30" :
+                        "text-muted-foreground"
+                      }`}>
+                        {snap.thesis_status}
+                      </Badge>
+                    )}
+                    {confidenceScore != null && (
+                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                        confidenceScore >= 80 ? "text-terminal-green border-terminal-green/30" :
+                        confidenceScore >= 60 ? "text-foreground" :
+                        confidenceScore >= 40 ? "text-terminal-amber border-terminal-amber/30" :
+                        "text-terminal-red border-terminal-red/30"
+                      }`}>
+                        Score: {confidenceScore}
+                      </Badge>
+                    )}
+                    {thesisMomentum && (
+                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                        thesisMomentum === "improving" ? "text-terminal-green border-terminal-green/30" :
+                        thesisMomentum === "deteriorating" ? "text-terminal-red border-terminal-red/30" :
+                        "text-muted-foreground"
+                      }`}>
+                        {thesisMomentum}
+                      </Badge>
+                    )}
                     {flags.length > 0 && (
                       <Badge variant="destructive" className="font-mono text-[10px] gap-1">
                         <AlertTriangle className="h-2.5 w-2.5" />
@@ -287,6 +325,61 @@ export function SnapshotsTab({ stockId }: Props) {
                     <p className="text-sm text-foreground/90 leading-relaxed">{snap.summary}</p>
                   )}
 
+                  {/* ═══ Thesis Drift Alert ═══ */}
+                  {!isEditing && (
+                    <ThesisDriftAlert driftStatus={driftStatus} driftReason={driftReason} />
+                  )}
+
+                  {/* ═══ Signals Grid ═══ */}
+                  {signals && !isEditing && (signals.bullish?.length || signals.warnings?.length || signals.bearish?.length) ? (
+                    <div>
+                      <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                        <Zap className="h-3 w-3" /> Signals
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        {signals.bullish && signals.bullish.length > 0 && (
+                          <div className="p-2.5 rounded border border-terminal-green/20 bg-terminal-green/5">
+                            <p className="font-mono text-[9px] uppercase tracking-wider text-terminal-green mb-1.5">Bullish</p>
+                            <ul className="space-y-1">
+                              {signals.bullish.map((s: string, i: number) => (
+                                <li key={i} className="text-[10px] text-foreground/80 flex items-start gap-1.5">
+                                  <span className="mt-1 h-1.5 w-1.5 rounded-full flex-shrink-0 bg-terminal-green/70" />
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {signals.warnings && signals.warnings.length > 0 && (
+                          <div className="p-2.5 rounded border border-terminal-amber/20 bg-terminal-amber/5">
+                            <p className="font-mono text-[9px] uppercase tracking-wider text-terminal-amber mb-1.5">Warnings</p>
+                            <ul className="space-y-1">
+                              {signals.warnings.map((s: string, i: number) => (
+                                <li key={i} className="text-[10px] text-foreground/80 flex items-start gap-1.5">
+                                  <span className="mt-1 h-1.5 w-1.5 rounded-full flex-shrink-0 bg-terminal-amber/70" />
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {signals.bearish && signals.bearish.length > 0 && (
+                          <div className="p-2.5 rounded border border-terminal-red/20 bg-terminal-red/5">
+                            <p className="font-mono text-[9px] uppercase tracking-wider text-terminal-red mb-1.5">Bearish</p>
+                            <ul className="space-y-1">
+                              {signals.bearish.map((s: string, i: number) => (
+                                <li key={i} className="text-[10px] text-foreground/80 flex items-start gap-1.5">
+                                  <span className="mt-1 h-1.5 w-1.5 rounded-full flex-shrink-0 bg-terminal-red/70" />
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {/* ═══ Metrics Grid ═══ */}
                   {Object.keys(metrics).length > 0 && !isEditing && (
                     <div>
@@ -296,11 +389,15 @@ export function SnapshotsTab({ stockId }: Props) {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {Object.entries(metrics).map(([key, val]) => {
                           const label = key.replace(/_/g, " ");
-                          // Extract just the value part before any parenthetical source quote
-                          const valueStr = String(val);
-                          const parenIdx = valueStr.indexOf("(");
-                          const displayValue = parenIdx > 0 ? valueStr.slice(0, parenIdx).trim() : valueStr;
-                          const sourceQuote = parenIdx > 0 ? valueStr.slice(parenIdx) : null;
+                          // Handle nested { value, evidence } or flat string
+                          const isNested = val && typeof val === "object" && "value" in (val as any);
+                          const displayValue = isNested ? (val as any).value : String(val);
+                          const evidence = isNested ? (val as any).evidence : null;
+                          // Fallback: extract parenthetical quote from flat string
+                          const flatStr = String(displayValue);
+                          const parenIdx = flatStr.indexOf("(");
+                          const cleanValue = parenIdx > 0 ? flatStr.slice(0, parenIdx).trim() : flatStr;
+                          const sourceQuote = evidence || (parenIdx > 0 ? flatStr.slice(parenIdx) : null);
 
                           return (
                             <div
@@ -312,7 +409,7 @@ export function SnapshotsTab({ stockId }: Props) {
                                 {label}
                               </p>
                               <p className="font-mono text-xs font-semibold text-foreground truncate">
-                                {displayValue}
+                                {cleanValue}
                               </p>
                               {sourceQuote && (
                                 <p className="font-mono text-[8px] text-muted-foreground/60 truncate mt-0.5 hidden group-hover:block">
@@ -389,7 +486,11 @@ export function SnapshotsTab({ stockId }: Props) {
 
 // ═══ Helper functions for QoQ comparison ═══
 
-function extractValue(val: string): string {
+function extractValue(val: unknown): string {
+  // Handle nested { value, evidence } objects
+  if (val && typeof val === "object" && "value" in (val as any)) {
+    return String((val as any).value);
+  }
   const s = String(val);
   const parenIdx = s.indexOf("(");
   return parenIdx > 0 ? s.slice(0, parenIdx).trim() : s;

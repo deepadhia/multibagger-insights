@@ -410,6 +410,7 @@ export type Database = {
       }
       quarterly_snapshots: {
         Row: {
+          confidence_score: number | null
           created_at: string
           dodged_questions: Json | null
           id: string
@@ -419,10 +420,13 @@ export type Database = {
           red_flags: Json | null
           stock_id: string
           summary: string | null
+          thesis_drift_status: string | null
+          thesis_momentum: string | null
           thesis_status: string | null
           thesis_status_reason: string | null
         }
         Insert: {
+          confidence_score?: number | null
           created_at?: string
           dodged_questions?: Json | null
           id?: string
@@ -432,10 +436,13 @@ export type Database = {
           red_flags?: Json | null
           stock_id: string
           summary?: string | null
+          thesis_drift_status?: string | null
+          thesis_momentum?: string | null
           thesis_status?: string | null
           thesis_status_reason?: string | null
         }
         Update: {
+          confidence_score?: number | null
           created_at?: string
           dodged_questions?: Json | null
           id?: string
@@ -445,6 +452,8 @@ export type Database = {
           red_flags?: Json | null
           stock_id?: string
           summary?: string | null
+          thesis_drift_status?: string | null
+          thesis_momentum?: string | null
           thesis_status?: string | null
           thesis_status_reason?: string | null
         }
