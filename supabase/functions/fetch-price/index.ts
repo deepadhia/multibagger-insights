@@ -70,6 +70,38 @@ async function discoverSymbols(apiKey: string, keyword: string): Promise<string[
     .slice(0, 8);
 }
 
+async function discoverSymbolsFromScreener(slugOrTicker: string): Promise<string[]> {
+  try {
+    const url = `https://www.screener.in/company/${encodeURIComponent(slugOrTicker)}/`;
+    const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!response.ok) return [];
+
+    const html = await response.text();
+    const found = new Set<string>();
+
+    const nseMatch = html.match(/NSE\s*:\s*<b[^>]*>\s*([A-Z0-9\-\.]+)\s*<\/b>/i) || html.match(/NSE\s*:\s*([A-Z0-9\-\.]+)/i);
+    const bseMatch = html.match(/BSE\s*:\s*<b[^>]*>\s*(\d{3,})\s*<\/b>/i) || html.match(/BSE\s*:\s*(\d{3,})/i);
+
+    const nse = nseMatch?.[1]?.trim().toUpperCase();
+    const bse = bseMatch?.[1]?.trim();
+
+    if (nse) {
+      found.add(nse);
+      found.add(`${nse}.NSE`);
+      found.add(`${nse}.NS`);
+    }
+
+    if (bse) {
+      found.add(`${bse}.BSE`);
+      found.add(`${bse}.BO`);
+    }
+
+    return Array.from(found);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchYahooQuote(symbol: string): Promise<NormalizedQuote | null> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
   const response = await fetch(url);
@@ -155,6 +187,12 @@ serve(async (req) => {
       alphaCandidates.add(`${screenerSlug}.BSE`);
       alphaCandidates.add(`${screenerSlug}.NS`);
       alphaCandidates.add(`${screenerSlug}.BO`);
+    }
+
+    const screenerDiscoveryTargets = [screenerSlug, normalizedTicker].filter(Boolean) as string[];
+    for (const target of screenerDiscoveryTargets) {
+      const symbols = await discoverSymbolsFromScreener(target);
+      symbols.forEach((s) => alphaCandidates.add(s));
     }
 
     let normalizedResult: NormalizedQuote | null = null;
