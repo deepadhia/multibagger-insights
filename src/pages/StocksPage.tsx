@@ -86,6 +86,26 @@ export default function StocksPage() {
     setRefreshingFinancials(false);
   };
 
+  const handleBackfillPrices = async () => {
+    if (!stocks?.length) return;
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("refresh-all-prices", {
+        body: { backfill: true },
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["prices"] });
+      queryClient.invalidateQueries({ queryKey: ["all-prices"] });
+      toast({
+        title: "1Y Price Backfill Complete",
+        description: data?.message || "Historical prices loaded",
+      });
+    } catch (e: any) {
+      toast({ title: "Backfill failed", description: e.message, variant: "destructive" });
+    }
+    setBackfilling(false);
+  };
+
   // Fetch latest analysis per stock
   const { data: latestAnalysis } = useQuery({
     queryKey: ["latest-analysis"],
