@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.refresh-all-financials]
 verify_jwt = false
+
+[functions.refresh-all-prices]
+verify_jwt = false
