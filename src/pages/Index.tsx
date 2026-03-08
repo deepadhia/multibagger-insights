@@ -415,11 +415,12 @@ const Index = () => {
                     <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Stock</th>
                     <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Sector</th>
                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">CMP (₹)</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1M</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3M</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1Y</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">2Y</th>
-                    <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3Y</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1M</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3M</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">6M</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">1Y</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">2Y</th>
+                     <th className="text-right p-2 text-muted-foreground text-[10px] uppercase tracking-wider">3Y</th>
                   </tr>
                 </thead>
                 <tbody>
