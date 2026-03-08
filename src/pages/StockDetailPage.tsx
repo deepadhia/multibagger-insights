@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, Loader2, DollarSign, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Target, AlertTriangle, Zap, Quote,
-  BarChart3, Activity, Shield, FileText,
+  BarChart3, Activity, Shield, FileText, Users,
 } from "lucide-react";
 
 const chartTooltipStyle = {
