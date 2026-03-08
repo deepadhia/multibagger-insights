@@ -1,13 +1,15 @@
+import { useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStocks } from "@/hooks/useStocks";
 import { AddStockDialog } from "@/components/AddStockDialog";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { Trash2, RefreshCw, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function StocksPage() {
@@ -15,6 +17,36 @@ export default function StocksPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
+
+  const handleRefreshAllPrices = async () => {
+    if (!stocks?.length) return;
+    setRefreshingPrices(true);
+    let success = 0;
+    let failed = 0;
+
+    for (const stock of stocks) {
+      try {
+        const { data, error } = await supabase.functions.invoke("fetch-price", {
+          body: { ticker: stock.ticker },
+        });
+        if (error || data?.success === false) {
+          failed++;
+        } else {
+          success++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["prices"] });
+    toast({
+      title: "Prices refreshed",
+      description: `${success} updated, ${failed} failed out of ${stocks.length} stocks`,
+    });
+    setRefreshingPrices(false);
+  };
 
   // Fetch latest analysis per stock
   const { data: latestAnalysis } = useQuery({
@@ -61,7 +93,19 @@ export default function StocksPage() {
             <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Stocks</h1>
             <p className="text-sm text-muted-foreground font-mono mt-1">Track and manage your portfolio</p>
           </div>
-          <AddStockDialog />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshAllPrices}
+              disabled={refreshingPrices || !stocks?.length}
+              className="font-mono"
+            >
+              {refreshingPrices ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {refreshingPrices ? "Refreshing..." : "Refresh All Prices"}
+            </Button>
+            <AddStockDialog />
+          </div>
         </div>
 
         <Card className="bg-card border-border overflow-hidden">
