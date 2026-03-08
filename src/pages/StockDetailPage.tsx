@@ -48,6 +48,8 @@ export default function StockDetailPage() {
   const { data: prices } = useStockPrices(id!);
   const { data: shareholding } = useShareholding(id!);
   const { data: peers } = usePeerComparison(id!);
+  const { data: promises } = useManagementPromises(id!);
+  const { data: snapshots } = useQuarterlySnapshots(id!);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
