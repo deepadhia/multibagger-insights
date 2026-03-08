@@ -91,7 +91,7 @@ export default function TranscriptsPage() {
         for (const update of payload.promise_updates) {
           if (update.new_status !== "pending") {
             const { error } = await supabase
-              .from("management_promises")
+              .from("management_promises" as any)
               .update({
                 status: update.new_status,
                 resolved_in_quarter: snap.quarter,
