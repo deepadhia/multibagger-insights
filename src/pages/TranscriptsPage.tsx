@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, FileText, Upload, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, FileText, Upload, CheckCircle2, AlertTriangle, Edit3 } from "lucide-react";
 
 interface GeminiPayload {
   quarterly_snapshot: {
