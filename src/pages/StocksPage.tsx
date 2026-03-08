@@ -20,6 +20,7 @@ export default function StocksPage() {
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [refreshingFinancials, setRefreshingFinancials] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [fetchingResults, setFetchingResults] = useState(false);
 
   const handleRefreshAllPrices = async () => {
     if (!stocks?.length) return;
