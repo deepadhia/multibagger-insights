@@ -70,8 +70,18 @@ export default function StockDetailPage() {
       const { data, error } = await supabase.functions.invoke("fetch-price", {
         body: { ticker: stock.ticker },
       });
+
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+
+      if (data?.success === false) {
+        toast({
+          title: "Live price unavailable",
+          description: data.message || `Could not fetch live quote for ${stock.ticker} right now.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       queryClient.invalidateQueries({ queryKey: ["prices", id] });
       toast({ title: "Price updated", description: `${stock.ticker}: ₹${data.price}` });
     } catch (err: any) {
