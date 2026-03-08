@@ -1,0 +1,1 @@
+ALTER TABLE public.quarterly_snapshots ADD COLUMN IF NOT EXISTS thesis_status text DEFAULT NULL, ADD COLUMN IF NOT EXISTS thesis_status_reason text DEFAULT NULL;

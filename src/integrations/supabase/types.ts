@@ -419,6 +419,8 @@ export type Database = {
           red_flags: Json | null
           stock_id: string
           summary: string | null
+          thesis_status: string | null
+          thesis_status_reason: string | null
         }
         Insert: {
           created_at?: string
@@ -430,6 +432,8 @@ export type Database = {
           red_flags?: Json | null
           stock_id: string
           summary?: string | null
+          thesis_status?: string | null
+          thesis_status_reason?: string | null
         }
         Update: {
           created_at?: string
@@ -441,6 +445,8 @@ export type Database = {
           red_flags?: Json | null
           stock_id?: string
           summary?: string | null
+          thesis_status?: string | null
+          thesis_status_reason?: string | null
         }
         Relationships: [
           {
