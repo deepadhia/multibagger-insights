@@ -18,6 +18,7 @@ export default function StocksPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [refreshingFinancials, setRefreshingFinancials] = useState(false);
 
   const handleRefreshAllPrices = async () => {
     if (!stocks?.length) return;
@@ -46,6 +47,42 @@ export default function StocksPage() {
       description: `${success} updated, ${failed} failed out of ${stocks.length} stocks`,
     });
     setRefreshingPrices(false);
+  };
+
+  const handleRefreshAllFinancials = async () => {
+    if (!stocks?.length) return;
+    setRefreshingFinancials(true);
+    let success = 0;
+    let failed = 0;
+
+    for (const stock of stocks) {
+      try {
+        // Add delay between requests to avoid rate limiting
+        if (success + failed > 0) await new Promise(r => setTimeout(r, 2000));
+        const { data, error } = await supabase.functions.invoke("fetch-financials", {
+          body: {
+            stock_id: stock.id,
+            ticker: stock.ticker,
+            screener_slug: stock.screener_slug || stock.ticker,
+          },
+        });
+        if (error || data?.success === false) {
+          failed++;
+        } else {
+          success++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["financial-metrics"] });
+    queryClient.invalidateQueries({ queryKey: ["financial-results"] });
+    toast({
+      title: "Financials refreshed",
+      description: `${success} updated, ${failed} failed out of ${stocks.length} stocks`,
+    });
+    setRefreshingFinancials(false);
   };
 
   // Fetch latest analysis per stock
