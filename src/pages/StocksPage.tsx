@@ -203,9 +203,9 @@ export default function StocksPage() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
                 ) : !stocks?.length ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
                 ) : (
                   stocks.map((stock) => {
                     const analysis = latestAnalysis?.[stock.id];
