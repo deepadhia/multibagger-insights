@@ -43,7 +43,6 @@ serve(async (req) => {
     console.log("Parsed yearly count:", metrics.yearly.length);
     console.log("Parsed quarterly count:", metrics.quarterly.length);
 
-    // Store in DB
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -54,12 +53,16 @@ serve(async (req) => {
         {
           stock_id,
           year: m.year,
+          revenue: m.revenue,
+          net_profit: m.net_profit,
+          opm: m.opm,
+          eps: m.eps,
           revenue_growth: m.revenue_growth,
           profit_growth: m.profit_growth,
           roce: m.roce,
           roe: m.roe,
           debt_equity: m.debt_equity,
-          promoter_holding: metrics.promoter_holding,
+          promoter_holding: m.promoter_holding,
           free_cash_flow: m.free_cash_flow,
         },
         { onConflict: "stock_id,year", ignoreDuplicates: false }
@@ -88,7 +91,6 @@ serve(async (req) => {
       ratios: metrics.ratios,
       yearly: metrics.yearly,
       quarterly: metrics.quarterly,
-      promoter_holding: metrics.promoter_holding,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -109,53 +111,75 @@ async function fetchScreenerPage(slug: string, sessionId: string, csrfToken: str
     "Referer": "https://www.screener.in/",
   };
 
-  // Try consolidated first
   const consolidatedUrl = `https://www.screener.in/company/${encodeURIComponent(slug)}/consolidated/`;
   console.log("Fetching:", consolidatedUrl);
   const resp1 = await fetch(consolidatedUrl, { headers, redirect: "follow" });
   console.log("Consolidated status:", resp1.status);
-
   if (resp1.ok) return await resp1.text();
 
-  // Fallback to standalone
   const standaloneUrl = `https://www.screener.in/company/${encodeURIComponent(slug)}/`;
   console.log("Trying standalone:", standaloneUrl);
   const resp2 = await fetch(standaloneUrl, { headers, redirect: "follow" });
   console.log("Standalone status:", resp2.status);
-
   if (resp2.ok) return await resp2.text();
 
   return null;
 }
 
-function parseScreenerData(html: string) {
-  const result: {
-    ratios: Record<string, string>;
-    yearly: Array<{
-      year: number;
-      revenue_growth: number | null;
-      profit_growth: number | null;
-      roce: number | null;
-      roe: number | null;
-      debt_equity: number | null;
-      free_cash_flow: number | null;
-    }>;
-    quarterly: Array<{
-      quarter: string;
-      revenue: number | null;
-      ebitda_margin: number | null;
-      debt: number | null;
-      capex: number | null;
-    }>;
-    promoter_holding: number | null;
-  } = {
-    ratios: {},
-    yearly: [],
-    quarterly: [],
-    promoter_holding: null,
-  };
+// ── Helper: extract a table section by ID ──
+function extractTableData(html: string, sectionId: string): { headers: string[]; rows: Record<string, number[]> } {
+  const sectionRegex = new RegExp(`<section id="${sectionId}"[\\s\\S]*?<\\/section>`);
+  const section = html.match(sectionRegex);
+  if (!section) return { headers: [], rows: {} };
 
-  // ── 1. Extract top-ratios ──
+  const table = section[0].match(/<table[\s\S]*?<\/table>/);
+  if (!table) return { headers: [], rows: {} };
+
+  // Extract headers (year/quarter columns)
+  const headers: string[] = [];
+  const thead = table[0].match(/<thead[\s\S]*?<\/thead>/);
+  if (thead) {
+    const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
+    for (const th of ths) {
+      const text = th.replace(/<[^>]+>/g, "").trim();
+      if (text.match(/Mar \d{4}|Jun \d{4}|Sep \d{4}|Dec \d{4}|FY\d{2}|\d{4}|TTM/)) {
+        headers.push(text);
+      }
+    }
+  }
+
+  // Extract row data
+  const rows: Record<string, number[]> = {};
+  const trs = table[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
+  for (const tr of trs) {
+    const tds = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
+    if (tds.length === 0) continue;
+    const label = tds[0].replace(/<[^>]+>/g, "").trim();
+    if (!label) continue;
+    const values = tds.slice(1).map(c => {
+      const raw = c.replace(/<[^>]+>/g, "").replace(/,/g, "").replace(/%/g, "").trim();
+      const num = parseFloat(raw);
+      return isNaN(num) ? 0 : num;
+    });
+    rows[label] = values;
+  }
+
+  return { headers, rows };
+}
+
+function findRow(rows: Record<string, number[]>, ...keywords: string[]): number[] {
+  for (const key of Object.keys(rows)) {
+    const lower = key.toLowerCase();
+    if (keywords.some(kw => lower.includes(kw))) {
+      return rows[key];
+    }
+  }
+  return [];
+}
+
+function parseScreenerData(html: string) {
+  // ── 1. Top ratios (current snapshot) ──
+  const ratios: Record<string, string> = {};
   const ratioSection = html.match(/<ul id="top-ratios">([\s\S]*?)<\/ul>/);
   if (ratioSection) {
     const liItems = ratioSection[1].match(/<li[\s\S]*?<\/li>/g) || [];
@@ -165,218 +189,159 @@ function parseScreenerData(html: string) {
       if (nameMatch && numberMatch) {
         const name = nameMatch[1].replace(/<[^>]+>/g, "").trim();
         const value = numberMatch[1].replace(/,/g, "");
-        result.ratios[name] = value;
+        ratios[name] = value;
       }
     }
   }
 
-  // Promoter holding
-  if (result.ratios["Promoter Holding"]) {
-    result.promoter_holding = parseFloat(result.ratios["Promoter Holding"]);
-  }
+  const currentRoce = ratios["ROCE"] ? parseFloat(ratios["ROCE"]) : null;
+  const currentRoe = ratios["ROE"] ? parseFloat(ratios["ROE"]) : null;
+  const currentDE = ratios["Debt to equity"] ? parseFloat(ratios["Debt to equity"]) : null;
+  const promoterHolding = ratios["Promoter Holding"] ? parseFloat(ratios["Promoter Holding"]) : null;
 
-  // ── 2. Parse Profit & Loss table for yearly revenue/profit ──
-  const plSection = html.match(/<section id="profit-loss"[\s\S]*?<\/section>/);
-  if (plSection) {
-    const table = plSection[0].match(/<table[\s\S]*?<\/table>/);
-    if (table) {
-      const headerRow = table[0].match(/<thead[\s\S]*?<\/thead>/);
-      const years: string[] = [];
-      if (headerRow) {
-        const thMatches = headerRow[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
-        for (const th of thMatches) {
-          const text = th.replace(/<[^>]+>/g, "").trim();
-          if (text.match(/Mar \d{4}|FY\d{2}|\d{4}/)) {
-            years.push(text);
-          }
-        }
-      }
+  // ── 2. P&L data (absolute values + growth) ──
+  const pl = extractTableData(html, "profit-loss");
+  const plYears = pl.headers.filter(h => !h.includes("TTM"));
+  const revenueRow = findRow(pl.rows, "sales", "revenue");
+  const netProfitRow = findRow(pl.rows, "net profit");
+  const opmRow = findRow(pl.rows, "opm");
+  const epsRow = findRow(pl.rows, "eps");
 
-      const bodyRows = table[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
-      let revenueRow: number[] = [];
-      let profitRow: number[] = [];
+  // Filter TTM index if present
+  const ttmIdx = pl.headers.indexOf("TTM");
+  const filterTTM = (arr: number[]) => ttmIdx >= 0 ? arr.filter((_, i) => i !== ttmIdx) : arr;
+  const revenue = filterTTM(revenueRow);
+  const netProfit = filterTTM(netProfitRow);
+  const opm = filterTTM(opmRow);
+  const eps = filterTTM(epsRow);
 
-      for (const row of bodyRows) {
-        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
-        const label = cells[0]?.replace(/<[^>]+>/g, "").trim().toLowerCase() || "";
+  // ── 3. Ratios section (yearly ROCE, ROE, D/E) ──
+  const ratiosTable = extractTableData(html, "ratios");
+  const ratioYears = ratiosTable.headers.filter(h => !h.includes("TTM"));
+  const roceRow = findRow(ratiosTable.rows, "roce");
+  const roeRow = findRow(ratiosTable.rows, "roe", "return on equity");
+  const deRow = findRow(ratiosTable.rows, "debt to equity", "debt / equity");
+  const ratioTTMIdx = ratiosTable.headers.indexOf("TTM");
+  const roceYearly = ratioTTMIdx >= 0 ? roceRow.filter((_, i) => i !== ratioTTMIdx) : roceRow;
+  const roeYearly = ratioTTMIdx >= 0 ? roeRow.filter((_, i) => i !== ratioTTMIdx) : roeRow;
+  const deYearly = ratioTTMIdx >= 0 ? deRow.filter((_, i) => i !== ratioTTMIdx) : deRow;
 
-        if (label.includes("sales") || label.includes("revenue")) {
-          revenueRow = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").trim()) || 0);
-        }
-        if (label.includes("net profit") && !label.includes("margin")) {
-          profitRow = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").trim()) || 0);
-        }
-      }
+  // ── 4. Cash flow (CFO, Capex → FCF) ──
+  const cf = extractTableData(html, "cash-flow");
+  const cfYears = cf.headers.filter(h => !h.includes("TTM"));
+  const cfoRow = findRow(cf.rows, "cash from operating");
+  const capexRow = findRow(cf.rows, "fixed assets purchased", "capex", "fixed assets");
+  const cfTTMIdx = cf.headers.indexOf("TTM");
+  const cfo = cfTTMIdx >= 0 ? cfoRow.filter((_, i) => i !== cfTTMIdx) : cfoRow;
+  const capex = cfTTMIdx >= 0 ? capexRow.filter((_, i) => i !== cfTTMIdx) : capexRow;
 
-      // Build yearly entries with growth rates
-      for (let i = 0; i < years.length; i++) {
-        const yearMatch = years[i].match(/(\d{4})/);
-        if (!yearMatch) continue;
-        const year = parseInt(yearMatch[1]);
+  // ── 5. Shareholding (promoter %) ──
+  const sh = extractTableData(html, "shareholding");
+  const shQuarters = sh.headers;
+  const promoterRow = findRow(sh.rows, "promoters");
 
-        const revGrowth = i > 0 && revenueRow[i - 1] > 0
-          ? Math.round(((revenueRow[i] - revenueRow[i - 1]) / revenueRow[i - 1]) * 100 * 10) / 10
-          : null;
-        const profGrowth = i > 0 && profitRow[i - 1] > 0
-          ? Math.round(((profitRow[i] - profitRow[i - 1]) / profitRow[i - 1]) * 100 * 10) / 10
-          : null;
+  // ── 6. Build yearly entries ──
+  // Use P&L years as primary, merge ratios data by matching year
+  const yearlyMap: Map<number, any> = new Map();
 
-        result.yearly.push({
-          year,
-          revenue_growth: revGrowth,
-          profit_growth: profGrowth,
-          roce: null,
-          roe: null,
-          debt_equity: null,
-          free_cash_flow: null,
-        });
-      }
-    }
-  }
+  for (let i = 0; i < plYears.length; i++) {
+    const yearMatch = plYears[i].match(/(\d{4})/);
+    if (!yearMatch) continue;
+    const year = parseInt(yearMatch[1]);
 
-  // ── 3. Parse Quarterly Results table ──
-  const qrSection = html.match(/<section id="quarters"[\s\S]*?<\/section>/);
-  if (qrSection) {
-    const table = qrSection[0].match(/<table[\s\S]*?<\/table>/);
-    if (table) {
-      const headerRow = table[0].match(/<thead[\s\S]*?<\/thead>/);
-      const quarters: string[] = [];
-      if (headerRow) {
-        const thMatches = headerRow[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
-        for (const th of thMatches) {
-          const text = th.replace(/<[^>]+>/g, "").trim();
-          if (text.match(/(Mar|Jun|Sep|Dec)\s+\d{4}/)) {
-            quarters.push(text);
-          }
-        }
-      }
+    const revGrowth = i > 0 && revenue[i - 1] > 0
+      ? Math.round(((revenue[i] - revenue[i - 1]) / revenue[i - 1]) * 100 * 10) / 10
+      : null;
+    const profGrowth = i > 0 && netProfit[i - 1] > 0
+      ? Math.round(((netProfit[i] - netProfit[i - 1]) / netProfit[i - 1]) * 100 * 10) / 10
+      : null;
 
-      const bodyRows = table[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
-      let salesRow: number[] = [];
-      let opmRow: number[] = [];
-
-      for (const row of bodyRows) {
-        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
-        const label = cells[0]?.replace(/<[^>]+>/g, "").trim().toLowerCase() || "";
-
-        if (label.includes("sales") || label.includes("revenue")) {
-          salesRow = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").trim()) || 0);
-        }
-        if (label.includes("opm") || label.includes("operating profit margin")) {
-          opmRow = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").replace(/%/g, "").trim()) || 0);
-        }
-      }
-
-      for (let i = 0; i < quarters.length; i++) {
-        result.quarterly.push({
-          quarter: quarters[i],
-          revenue: salesRow[i] ?? null,
-          ebitda_margin: opmRow[i] ?? null,
-          debt: null,
-          capex: null,
-        });
-      }
-    }
-  }
-
-  // ── 4. Parse Balance Sheet for debt ──
-  const bsSection = html.match(/<section id="balance-sheet"[\s\S]*?<\/section>/);
-  if (bsSection) {
-    const table = bsSection[0].match(/<table[\s\S]*?<\/table>/);
-    if (table) {
-      const bodyRows = table[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
-      for (const row of bodyRows) {
-        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
-        const label = cells[0]?.replace(/<[^>]+>/g, "").trim().toLowerCase() || "";
-
-        if (label.includes("borrowings") || label === "debt") {
-          const vals = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").trim()) || 0);
-          // Apply last debt value to latest yearly entry
-          if (vals.length > 0 && result.yearly.length > 0) {
-            const lastDebt = vals[vals.length - 1];
-            // We can derive D/E if we have equity info, for now just store
-          }
-        }
-      }
-    }
-  }
-
-  // ── 5. Apply top-ratios to latest year ──
-  const roce = result.ratios["ROCE"] ? parseFloat(result.ratios["ROCE"]) : null;
-  const roe = result.ratios["ROE"] ? parseFloat(result.ratios["ROE"]) : null;
-  const debtEquity = result.ratios["Debt to equity"] ? parseFloat(result.ratios["Debt to equity"]) : null;
-
-  if (result.yearly.length > 0) {
-    const latest = result.yearly[result.yearly.length - 1];
-    latest.roce = roce;
-    latest.roe = roe;
-    latest.debt_equity = debtEquity;
-  } else if (roce !== null || roe !== null) {
-    // No P&L parsed, create a standalone entry
-    const currentYear = new Date().getFullYear();
-    result.yearly.push({
-      year: currentYear,
-      revenue_growth: null,
-      profit_growth: null,
-      roce,
-      roe,
-      debt_equity: debtEquity,
+    yearlyMap.set(year, {
+      year,
+      revenue: revenue[i] || null,
+      net_profit: netProfit[i] || null,
+      opm: opm[i] || null,
+      eps: eps[i] || null,
+      revenue_growth: revGrowth,
+      profit_growth: profGrowth,
+      roce: null,
+      roe: null,
+      debt_equity: null,
       free_cash_flow: null,
+      promoter_holding: null,
     });
   }
 
-  // ── 6. Parse Cash Flow for FCF ──
-  const cfSection = html.match(/<section id="cash-flow"[\s\S]*?<\/section>/);
-  if (cfSection) {
-    const table = cfSection[0].match(/<table[\s\S]*?<\/table>/);
-    if (table) {
-      const headerRow = table[0].match(/<thead[\s\S]*?<\/thead>/);
-      const cfYears: string[] = [];
-      if (headerRow) {
-        const thMatches = headerRow[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
-        for (const th of thMatches) {
-          const text = th.replace(/<[^>]+>/g, "").trim();
-          if (text.match(/Mar \d{4}|FY\d{2}|\d{4}/)) {
-            cfYears.push(text);
-          }
-        }
-      }
-
-      const bodyRows = table[0].match(/<tr[\s\S]*?<\/tr>/g) || [];
-      let cfoRow: number[] = [];
-      let capexRow: number[] = [];
-
-      for (const row of bodyRows) {
-        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
-        const label = cells[0]?.replace(/<[^>]+>/g, "").trim().toLowerCase() || "";
-
-        if (label.includes("cash from operating")) {
-          cfoRow = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").trim()) || 0);
-        }
-        if (label.includes("fixed assets purchased") || label.includes("capex")) {
-          capexRow = cells.slice(1).map(c => parseFloat(c.replace(/<[^>]+>/g, "").replace(/,/g, "").trim()) || 0);
-        }
-      }
-
-      // Map FCF to yearly entries
-      for (let i = 0; i < cfYears.length; i++) {
-        const yearMatch = cfYears[i].match(/(\d{4})/);
-        if (!yearMatch) continue;
-        const year = parseInt(yearMatch[1]);
-        const fcf = (cfoRow[i] || 0) - Math.abs(capexRow[i] || 0);
-
-        const existing = result.yearly.find(y => y.year === year);
-        if (existing) {
-          existing.free_cash_flow = Math.round(fcf * 10) / 10;
-        }
-      }
-
-      // Also set capex on quarterly results if available
-      for (let i = 0; i < cfYears.length && i < capexRow.length; i++) {
-        // quarterly capex is harder to map, skip for now
-      }
+  // Merge ROCE/ROE/D/E from ratios section
+  for (let i = 0; i < ratioYears.length; i++) {
+    const yearMatch = ratioYears[i].match(/(\d{4})/);
+    if (!yearMatch) continue;
+    const year = parseInt(yearMatch[1]);
+    const entry = yearlyMap.get(year);
+    if (entry) {
+      entry.roce = roceYearly[i] || null;
+      entry.roe = roeYearly[i] || null;
+      entry.debt_equity = deYearly[i] || null;
     }
   }
 
-  return result;
+  // Merge FCF from cash flow
+  for (let i = 0; i < cfYears.length; i++) {
+    const yearMatch = cfYears[i].match(/(\d{4})/);
+    if (!yearMatch) continue;
+    const year = parseInt(yearMatch[1]);
+    const entry = yearlyMap.get(year);
+    if (entry) {
+      entry.free_cash_flow = Math.round(((cfo[i] || 0) - Math.abs(capex[i] || 0)) * 10) / 10;
+    }
+  }
+
+  // Apply promoter holding from shareholding section (latest value to latest year)
+  // Also try to map quarterly promoter data to yearly
+  if (promoterRow.length > 0 && yearlyMap.size > 0) {
+    const latestPromoter = promoterRow[promoterRow.length - 1];
+    const sortedYears = Array.from(yearlyMap.keys()).sort((a, b) => a - b);
+    const latestYear = sortedYears[sortedYears.length - 1];
+    const latestEntry = yearlyMap.get(latestYear);
+    if (latestEntry) latestEntry.promoter_holding = latestPromoter;
+  }
+  // Fallback from top ratios
+  if (promoterHolding !== null && yearlyMap.size > 0) {
+    const sortedYears = Array.from(yearlyMap.keys()).sort((a, b) => a - b);
+    const latestEntry = yearlyMap.get(sortedYears[sortedYears.length - 1]);
+    if (latestEntry && latestEntry.promoter_holding === null) {
+      latestEntry.promoter_holding = promoterHolding;
+    }
+  }
+
+  // If no P&L data but we have ratios, create entries from ratios section
+  if (yearlyMap.size === 0 && (currentRoce !== null || currentRoe !== null)) {
+    const currentYear = new Date().getFullYear();
+    yearlyMap.set(currentYear, {
+      year: currentYear,
+      revenue: null, net_profit: null, opm: null, eps: null,
+      revenue_growth: null, profit_growth: null,
+      roce: currentRoce, roe: currentRoe, debt_equity: currentDE,
+      free_cash_flow: null, promoter_holding: promoterHolding,
+    });
+  }
+
+  const yearly = Array.from(yearlyMap.values()).sort((a, b) => a.year - b.year);
+
+  // ── 7. Quarterly results ──
+  const qr = extractTableData(html, "quarters");
+  const quarters = qr.headers;
+  const qRevenue = findRow(qr.rows, "sales", "revenue");
+  const qOpm = findRow(qr.rows, "opm", "operating profit margin");
+  const qNetProfit = findRow(qr.rows, "net profit");
+
+  const quarterly = quarters.map((q, i) => ({
+    quarter: q,
+    revenue: qRevenue[i] ?? null,
+    ebitda_margin: qOpm[i] ?? null,
+    debt: null,
+    capex: null,
+  }));
+
+  return { ratios, yearly, quarterly };
 }
