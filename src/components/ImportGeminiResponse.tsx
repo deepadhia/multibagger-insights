@@ -270,6 +270,31 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
           <Button variant="secondary" size="sm" onClick={handleParse} className="font-mono text-xs">
             Validate JSON
           </Button>
+          {effectiveQuarter && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="font-mono text-xs"
+              onClick={async () => {
+                const q = effectiveQuarter;
+                if (!confirm(`Delete snapshot + promises for ${q}? This cannot be undone.`)) return;
+                setCommitting(true);
+                try {
+                  await supabase.from("quarterly_snapshots").delete().eq("stock_id", stockId).eq("quarter", q);
+                  await supabase.from("management_promises").delete().eq("stock_id", stockId).eq("made_in_quarter", q);
+                  queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
+                  queryClient.invalidateQueries({ queryKey: ["management-promises", stockId] });
+                  toast({ title: `Reset ${q}`, description: "Snapshot and promises deleted. Ready to re-import." });
+                } catch (err: any) {
+                  toast({ title: "Reset failed", description: err.message, variant: "destructive" });
+                } finally {
+                  setCommitting(false);
+                }
+              }}
+            >
+              Reset {effectiveQuarter}
+            </Button>
+          )}
         </div>
 
         {parseError && (
