@@ -26,11 +26,7 @@ async function fetchYahooQuote(symbol: string): Promise<NormalizedQuote | null> 
       headers: { "User-Agent": "Mozilla/5.0" },
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      console.log(`Yahoo ${response.status} for ${symbol}:`, body.slice(0, 200));
-      return null;
-    }
+    if (!response.ok) return null;
 
     const data = await response.json();
     const result = data?.chart?.result?.[0];
@@ -51,9 +47,42 @@ async function fetchYahooQuote(symbol: string): Promise<NormalizedQuote | null> 
       change_percent: changePercent ? Math.round(changePercent * 100) / 100 : null,
       date: formatDate(Number(meta?.regularMarketTime)),
     };
-  } catch (e) {
-    console.log(`Yahoo fetch error for ${symbol}:`, e);
+  } catch {
     return null;
+  }
+}
+
+// Fetch historical daily prices for 1Y
+async function fetchYahooHistorical(symbol: string): Promise<Array<{ date: string; price: number; volume: number | null }>> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
+    const response = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const result = data?.chart?.result?.[0];
+    const timestamps = result?.timestamp;
+    const closes = result?.indicators?.quote?.[0]?.close;
+    const volumes = result?.indicators?.quote?.[0]?.volume;
+
+    if (!timestamps || !closes) return [];
+
+    const prices: Array<{ date: string; price: number; volume: number | null }> = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const price = Number(closes[i]);
+      if (!Number.isFinite(price) || price <= 0) continue;
+      prices.push({
+        date: formatDate(timestamps[i]),
+        price,
+        volume: Number.isFinite(volumes?.[i]) ? Number(volumes[i]) : null,
+      });
+    }
+    return prices;
+  } catch {
+    return [];
   }
 }
 
@@ -71,16 +100,36 @@ async function discoverFromScreener(slugOrTicker: string): Promise<string | null
   }
 }
 
+async function resolveYahooSymbol(normalizedTicker: string, screenerSlug: string | null): Promise<{ symbol: string; candidates: string[] }> {
+  const baseSymbols = new Set<string>([normalizedTicker]);
+  if (screenerSlug && screenerSlug !== normalizedTicker) {
+    baseSymbols.add(screenerSlug);
+  }
+
+  for (const slug of [screenerSlug, normalizedTicker]) {
+    if (!slug) continue;
+    const nseSymbol = await discoverFromScreener(slug);
+    if (nseSymbol) baseSymbols.add(nseSymbol);
+  }
+
+  const candidates: string[] = [];
+  for (const sym of baseSymbols) {
+    candidates.push(`${sym}.NS`, `${sym}.BO`, sym);
+  }
+
+  return { symbol: "", candidates };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { ticker } = await req.json();
+    const body = await req.json();
+    const { ticker, backfill } = body;
 
     if (!ticker || typeof ticker !== "string") {
       return new Response(JSON.stringify({ success: false, error: "Ticker is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -106,43 +155,77 @@ serve(async (req) => {
       screenerSlug = stock?.screener_slug?.toUpperCase() ?? null;
     }
 
-    // Build Yahoo symbol candidates (Indian stocks use .NS for NSE, .BO for BSE)
-    const candidates = new Set<string>();
+    const { candidates } = await resolveYahooSymbol(normalizedTicker, screenerSlug);
 
-    // Try NSE first (most liquid), then BSE
-    const baseSymbols = new Set<string>([normalizedTicker]);
-    if (screenerSlug && screenerSlug !== normalizedTicker) {
-      baseSymbols.add(screenerSlug);
+    // If backfill requested, fetch 1Y historical data
+    if (backfill && supabase && stockId) {
+      let historicalPrices: Array<{ date: string; price: number; volume: number | null }> = [];
+      let resolvedSymbol = "";
+
+      for (const symbol of candidates) {
+        console.log("Trying historical Yahoo:", symbol);
+        const prices = await fetchYahooHistorical(symbol);
+        if (prices.length > 0) {
+          historicalPrices = prices;
+          resolvedSymbol = symbol;
+          console.log(`✓ Found ${prices.length} historical prices for ${symbol}`);
+          break;
+        }
+      }
+
+      if (historicalPrices.length === 0) {
+        return new Response(JSON.stringify({ success: false, error: `No historical data for ${normalizedTicker}` }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Get existing dates to avoid duplicates
+      const { data: existingPrices } = await supabase
+        .from("prices")
+        .select("date")
+        .eq("stock_id", stockId);
+
+      const existingDates = new Set((existingPrices || []).map(p => p.date));
+
+      const newPrices = historicalPrices
+        .filter(p => !existingDates.has(p.date))
+        .map(p => ({
+          stock_id: stockId!,
+          price: p.price,
+          volume: p.volume,
+          date: p.date,
+          change_percent: null,
+        }));
+
+      if (newPrices.length > 0) {
+        // Insert in batches of 100
+        for (let i = 0; i < newPrices.length; i += 100) {
+          await supabase.from("prices").insert(newPrices.slice(i, i + 100));
+        }
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        symbol: resolvedSymbol,
+        inserted: newPrices.length,
+        total_fetched: historicalPrices.length,
+        skipped_duplicates: historicalPrices.length - newPrices.length,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Try to discover the real NSE symbol from Screener.in
-    for (const slug of [screenerSlug, normalizedTicker]) {
-      if (!slug) continue;
-      const nseSymbol = await discoverFromScreener(slug);
-      if (nseSymbol) baseSymbols.add(nseSymbol);
-    }
-
-    for (const sym of baseSymbols) {
-      candidates.add(`${sym}.NS`);  // NSE
-      candidates.add(`${sym}.BO`);  // BSE
-      candidates.add(sym);           // US / direct
-    }
-
+    // Regular single-price fetch
     let result: NormalizedQuote | null = null;
     const triedSymbols: string[] = [];
 
     for (const symbol of candidates) {
       triedSymbols.push(symbol);
-      console.log("Trying Yahoo:", symbol);
       result = await fetchYahooQuote(symbol);
-      if (result) {
-        console.log(`✓ Found price for ${symbol}: ${result.price}`);
-        break;
-      }
+      if (result) break;
     }
 
     if (!result) {
-      // Fallback: return last stored price
       if (supabase && stockId) {
         const { data: lastPrice } = await supabase
           .from("prices")
@@ -154,36 +237,41 @@ serve(async (req) => {
 
         if (lastPrice) {
           return new Response(JSON.stringify({
-            success: true,
-            stale: true,
-            symbol: normalizedTicker,
-            ...lastPrice,
+            success: true, stale: true, symbol: normalizedTicker, ...lastPrice,
             message: "Live quote unavailable. Returned latest stored price.",
-          }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 
       return new Response(JSON.stringify({
-        success: false,
-        error: `Could not fetch live quote for ${normalizedTicker}`,
-        tried_symbols: triedSymbols,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        success: false, error: `Could not fetch live quote for ${normalizedTicker}`, tried_symbols: triedSymbols,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Store in DB
     if (supabase && stockId) {
-      await supabase.from("prices").insert({
-        stock_id: stockId,
-        price: result.price,
-        volume: result.volume,
-        change_percent: result.change_percent,
-        date: result.date,
-      });
+      // Upsert to avoid duplicate date entries
+      const { data: existing } = await supabase
+        .from("prices")
+        .select("id")
+        .eq("stock_id", stockId)
+        .eq("date", result.date)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase.from("prices").update({
+          price: result.price,
+          volume: result.volume,
+          change_percent: result.change_percent,
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("prices").insert({
+          stock_id: stockId,
+          price: result.price,
+          volume: result.volume,
+          change_percent: result.change_percent,
+          date: result.date,
+        });
+      }
     }
 
     return new Response(JSON.stringify({ success: true, ...result }), {
@@ -192,8 +280,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("fetch-price error:", e);
     return new Response(JSON.stringify({ success: false, error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
