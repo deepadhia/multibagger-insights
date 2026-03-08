@@ -322,9 +322,11 @@ export default function StockDetailPage() {
             <TabsTrigger value="analysis" className="font-mono text-xs gap-1.5">
               <Zap className="h-3 w-3" /> Analysis
             </TabsTrigger>
-            <TabsTrigger value="commitments" className="font-mono text-xs gap-1.5">
-              <Shield className="h-3 w-3" /> Commitments
-            </TabsTrigger>
+            {totalCommitments > 0 && (
+              <TabsTrigger value="commitments" className="font-mono text-xs gap-1.5">
+                <Shield className="h-3 w-3" /> Commitments
+              </TabsTrigger>
+            )}
             <TabsTrigger value="promises" className="font-mono text-xs gap-1.5">
               <Target className="h-3 w-3" /> Promises
             </TabsTrigger>
