@@ -287,12 +287,15 @@ export default function StockDetailPage() {
             <input
               type="date"
               className="bg-transparent border border-border rounded px-2 py-1 font-mono text-xs text-foreground w-[130px] text-center"
-              value={(stock as any).next_results_date || ""}
-              onChange={async (e) => {
+              defaultValue={(stock as any).next_results_date || ""}
+              onBlur={async (e) => {
                 const val = e.target.value || null;
+                const current = (stock as any).next_results_date || null;
+                if (val === current) return;
                 await supabase.from("stocks").update({ next_results_date: val } as any).eq("id", stock.id);
                 queryClient.invalidateQueries({ queryKey: ["stock", id] });
                 queryClient.invalidateQueries({ queryKey: ["stocks"] });
+                toast({ title: "Results date updated", description: val ? `Set to ${val}` : "Cleared" });
               }}
             />
             {(stock as any).next_results_date && (
