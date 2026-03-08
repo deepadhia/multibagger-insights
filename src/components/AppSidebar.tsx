@@ -22,7 +22,7 @@ import {
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Stocks", url: "/stocks", icon: List },
-  { title: "Transcripts", url: "/transcripts", icon: FileText },
+  { title: "Earnings", url: "/transcripts", icon: FileText },
   { title: "Signals", url: "/signals", icon: TrendingUp },
 ];
 
