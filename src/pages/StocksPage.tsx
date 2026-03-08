@@ -97,7 +97,7 @@ export default function StocksPage() {
       queryClient.invalidateQueries({ queryKey: ["prices"] });
       queryClient.invalidateQueries({ queryKey: ["all-prices"] });
       toast({
-        title: "1Y Price Backfill Complete",
+        title: "3Y Price Backfill Complete",
         description: data?.message || "Historical prices loaded",
       });
     } catch (e: any) {
