@@ -8,6 +8,7 @@ import StocksPage from "./pages/StocksPage";
 import StockDetailPage from "./pages/StockDetailPage";
 import TranscriptsPage from "./pages/TranscriptsPage";
 import SignalsPage from "./pages/SignalsPage";
+import CalendarPage from "./pages/CalendarPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
