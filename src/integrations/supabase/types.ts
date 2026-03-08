@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      bulk_deals: {
+        Row: {
+          avg_price: number | null
+          buy_sell: string | null
+          client_name: string
+          created_at: string
+          deal_date: string
+          deal_type: string
+          exchange: string | null
+          id: string
+          quantity: number | null
+          remarks: string | null
+          stock_id: string
+          trade_value: number | null
+        }
+        Insert: {
+          avg_price?: number | null
+          buy_sell?: string | null
+          client_name: string
+          created_at?: string
+          deal_date: string
+          deal_type?: string
+          exchange?: string | null
+          id?: string
+          quantity?: number | null
+          remarks?: string | null
+          stock_id: string
+          trade_value?: number | null
+        }
+        Update: {
+          avg_price?: number | null
+          buy_sell?: string | null
+          client_name?: string
+          created_at?: string
+          deal_date?: string
+          deal_type?: string
+          exchange?: string | null
+          id?: string
+          quantity?: number | null
+          remarks?: string | null
+          stock_id?: string
+          trade_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_deals_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_metrics: {
         Row: {
           created_at: string
@@ -110,6 +163,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "financial_results_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insider_trades: {
+        Row: {
+          avg_price: number | null
+          created_at: string
+          exchange: string | null
+          id: string
+          mode_of_acquisition: string | null
+          num_securities: number | null
+          person_category: string | null
+          person_name: string
+          securities_type: string | null
+          stock_id: string
+          trade_date: string
+          trade_type: string
+          trade_value: number | null
+        }
+        Insert: {
+          avg_price?: number | null
+          created_at?: string
+          exchange?: string | null
+          id?: string
+          mode_of_acquisition?: string | null
+          num_securities?: number | null
+          person_category?: string | null
+          person_name: string
+          securities_type?: string | null
+          stock_id: string
+          trade_date: string
+          trade_type?: string
+          trade_value?: number | null
+        }
+        Update: {
+          avg_price?: number | null
+          created_at?: string
+          exchange?: string | null
+          id?: string
+          mode_of_acquisition?: string | null
+          num_securities?: number | null
+          person_category?: string | null
+          person_name?: string
+          securities_type?: string | null
+          stock_id?: string
+          trade_date?: string
+          trade_type?: string
+          trade_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insider_trades_stock_id_fkey"
             columns: ["stock_id"]
             isOneToOne: false
             referencedRelation: "stocks"
