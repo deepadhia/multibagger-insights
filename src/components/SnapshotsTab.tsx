@@ -31,6 +31,7 @@ export function SnapshotsTab({ stockId }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editJson, setEditJson] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [expandedSnap, setExpandedSnap] = useState<string | null>(
     // Auto-expand the first snapshot
     null
