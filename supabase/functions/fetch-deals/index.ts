@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     const authHeaders = { ...NSE_HEADERS, Cookie: cookies };
     const toDate = new Date();
     const fromDate = new Date();
-    fromDate.setMonth(fromDate.getMonth() - 6);
+    fromDate.setFullYear(fromDate.getFullYear() - 1);
     const from = formatDate(fromDate);
     const to = formatDate(toDate);
 
