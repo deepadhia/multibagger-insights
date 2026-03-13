@@ -430,6 +430,50 @@ const Index = () => {
           )}
         </Card>
 
+        {/* ── CONCALL TRANSCRIPTS ── */}
+        {transcriptAlerts.length > 0 && (
+          <Card className="p-4 bg-card border-border card-glow">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText className="h-4 w-4 text-primary" />
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Concall Transcripts ({transcriptAlerts.length})
+              </h3>
+            </div>
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+              {transcriptAlerts.map((alert, i) => (
+                <a
+                  key={i}
+                  href={alert.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between px-3 py-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono text-xs font-bold text-primary shrink-0">{alert.stock.ticker}</span>
+                    <span className="text-xs text-foreground truncate">{alert.title}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {alert.quarter && (
+                      <Badge variant="outline" className="font-mono text-[9px] px-1.5 py-0 text-primary border-primary/30">
+                        {alert.quarter}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className={`font-mono text-[9px] px-1.5 py-0 ${
+                      alert.type === "concall_transcript" ? "text-primary border-primary/30" :
+                      alert.type === "earnings" ? "text-terminal-green border-terminal-green/30" :
+                      "text-muted-foreground border-border"
+                    }`}>
+                      {alert.type === "concall_transcript" ? "Concall" : alert.type === "earnings" ? "Earnings" : alert.type}
+                    </Badge>
+                    {alert.date && <span className="text-[10px] text-muted-foreground font-mono">{alert.date}</span>}
+                    <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </a>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {/* ── THESIS STATUS PER STOCK ── */}
         <Card className="p-4 bg-card border-border card-glow overflow-hidden">
           <div className="flex items-center gap-2 mb-3">
