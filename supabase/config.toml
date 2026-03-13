@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.fetch-results-calendar]
 verify_jwt = false
+
+[functions.fetch-transcript-links]
+verify_jwt = false
