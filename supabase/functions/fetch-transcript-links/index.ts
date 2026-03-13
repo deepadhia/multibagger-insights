@@ -118,6 +118,8 @@ Deno.serve(async (req) => {
     const TRANSCRIPT_KEYWORDS = [
       "transcript", "concall", "con call", "conference call",
       "earnings call", "analyst meet", "investor presentation",
+      "investor meet", "presentation", "annual report",
+      "investor day", "ppt", "corporate presentation",
     ];
 
     const toDate = new Date();
