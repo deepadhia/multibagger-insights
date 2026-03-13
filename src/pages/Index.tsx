@@ -100,20 +100,21 @@ const Index = () => {
   const { toast } = useToast();
   const [refreshingSectors, setRefreshingSectors] = useState(false);
   const [orderAlerts, setOrderAlerts] = useState<Array<{ stock: any; title: string; date: string; url: string }>>([]);
+  const [transcriptAlerts, setTranscriptAlerts] = useState<Array<{ stock: any; title: string; date: string; url: string; type: string; quarter: string }>>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
-  // Fetch new order announcements for all stocks
+  // Fetch new order announcements + transcript links for all stocks
   const fetchOrderAlerts = async () => {
     if (!stocks || stocks.length === 0) return;
     setLoadingOrders(true);
     const allOrders: Array<{ stock: any; title: string; date: string; url: string }> = [];
-    // Fetch in parallel batches of 5
+    const allTranscripts: Array<{ stock: any; title: string; date: string; url: string; type: string; quarter: string }> = [];
     const batches = [];
     for (let i = 0; i < stocks.length; i += 5) {
       batches.push(stocks.slice(i, i + 5));
     }
     for (const batch of batches) {
-      const results = await Promise.allSettled(
+      await Promise.allSettled(
         batch.map(stock =>
           supabase.functions.invoke("fetch-transcript-links", {
             body: { ticker: stock.ticker, company_name: stock.company_name, screener_slug: stock.screener_slug },
@@ -123,12 +124,19 @@ const Index = () => {
                 allOrders.push({ stock, title: o.title, date: o.date, url: o.url });
               }
             }
+            if (data?.transcripts) {
+              for (const t of data.transcripts) {
+                allTranscripts.push({ stock, title: t.title, date: t.date, url: t.url, type: t.type, quarter: t.quarter });
+              }
+            }
           })
         )
       );
     }
     allOrders.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     setOrderAlerts(allOrders.slice(0, 15));
+    allTranscripts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    setTranscriptAlerts(allTranscripts);
     setLoadingOrders(false);
   };
 
