@@ -29,6 +29,51 @@ app.get("/health", async (_req, res) => {
   }
 });
 
+app.post("/api/stocks/:id/reset-insights", async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ ok: false, error: "Missing stock id" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `UPDATE stocks
+       SET tracking_directives = NULL,
+           metric_keys = NULL
+       WHERE id = $1`,
+      [id],
+    );
+
+    await client.query(
+      `DELETE FROM management_promises
+       WHERE stock_id = $1`,
+      [id],
+    );
+
+    await client.query(
+      `DELETE FROM quarterly_snapshots
+       WHERE stock_id = $1`,
+      [id],
+    );
+
+    await client.query("COMMIT");
+
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("reset-insights error:", err);
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+  } finally {
+    client.release();
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, () => {

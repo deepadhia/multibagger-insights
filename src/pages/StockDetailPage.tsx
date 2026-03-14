@@ -60,6 +60,7 @@ export default function StockDetailPage() {
   const { toast } = useToast();
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
   const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [resettingInsights, setResettingInsights] = useState(false);
 
   const handleFetchFinancials = async () => {
     if (!stock) return;
@@ -110,6 +111,45 @@ export default function StockDetailPage() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setFetchingPrice(false);
+    }
+  };
+
+  const handleResetInsights = async () => {
+    if (!stock) return;
+    if (resettingInsights) return;
+    setResettingInsights(true);
+    try {
+      const response = await fetch(`/api/stocks/${stock.id}/reset-insights`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = body?.error || `Reset failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      // Invalidate caches so UI refreshes
+      queryClient.invalidateQueries({ queryKey: ["stock", id] });
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      queryClient.invalidateQueries({ queryKey: ["management-promises", id] });
+      queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", id] });
+
+      toast({
+        title: "Insights reset",
+        description: "Prompts, snapshots, and promises have been cleared for this stock.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Reset failed",
+        description: err?.message ?? "Could not reset prompts and snapshots.",
+        variant: "destructive",
+      });
+    } finally {
+      setResettingInsights(false);
     }
   };
 
@@ -241,6 +281,20 @@ export default function StockDetailPage() {
             </Button>
             <CopyGeminiPrompt stock={stock} />
             <ImportGeminiResponse stockId={stock.id} ticker={stock.ticker} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetInsights}
+              disabled={resettingInsights}
+              className="font-mono text-xs border-terminal-red/40 text-terminal-red hover:bg-terminal-red/10"
+            >
+              {resettingInsights ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              <span className="ml-1">Reset AI insights</span>
+            </Button>
           </div>
         </div>
 

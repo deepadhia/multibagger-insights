@@ -87,8 +87,6 @@ If you want to use your **own** hosted Supabase project instead of the default L
    supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
    supabase secrets set SCREENER_SESSION_ID=<your_screener_session_cookie>
    supabase secrets set SCREENER_CSRF_TOKEN=<your_screener_csrf_token>
-   # Optional:
-   supabase secrets set ALPHA_VANTAGE_API_KEY=<your_alpha_vantage_key>
    ```
 
 6. Deploy the edge functions:
@@ -109,9 +107,6 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<service_role_key_from_supabase_s
 # Required for Screener.in financial data scraping
 supabase secrets set SCREENER_SESSION_ID=<your_screener_session_cookie>
 supabase secrets set SCREENER_CSRF_TOKEN=<your_screener_csrf_token>
-
-# Optional: Alpha Vantage for additional financial data
-supabase secrets set ALPHA_VANTAGE_API_KEY=<your_key>
 ```
 
 #### How to get Screener.in credentials:
