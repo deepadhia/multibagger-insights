@@ -46,12 +46,56 @@ DB URL:     postgresql://postgres:postgres@127.0.0.1:54322/postgres
 
 ### 3. Configure Environment
 
-Create a `.env.local` file in the project root:
+Create a `.env.local` file in the project root (do **not** commit this file):
 
 ```env
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=<anon_key_from_supabase_start>
 ```
+
+You can use `.env.example` as a reference template for required variables.
+
+### 3.1 Connect Your Own Supabase Project (Cloud)
+
+If you want to use your **own** hosted Supabase project instead of the default Lovable one:
+
+1. Create a new project in the Supabase dashboard.
+2. Link this repo to that project:
+
+   ```sh
+   supabase login
+   supabase link --project-ref <your_project_ref>
+   ```
+
+3. Apply the schema + seed data to your project:
+
+   ```sh
+   supabase db reset
+   ```
+
+4. In `.env.local`, set your cloud project values:
+
+   ```env
+   VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=<your_anon_public_key>
+   ```
+
+5. Set edge function secrets (service role key and external APIs) for that project:
+
+   ```sh
+   supabase secrets set SUPABASE_URL=https://<your-project-ref>.supabase.co
+   supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
+   supabase secrets set SCREENER_SESSION_ID=<your_screener_session_cookie>
+   supabase secrets set SCREENER_CSRF_TOKEN=<your_screener_csrf_token>
+   # Optional:
+   supabase secrets set ALPHA_VANTAGE_API_KEY=<your_alpha_vantage_key>
+   ```
+
+6. Deploy the edge functions:
+
+   ```sh
+   supabase functions deploy --project-ref <your_project_ref> --all
+   ```
 
 ### 4. Configure Edge Function Secrets
 
