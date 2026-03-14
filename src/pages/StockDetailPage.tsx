@@ -61,6 +61,8 @@ export default function StockDetailPage() {
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
   const [fetchingPrice, setFetchingPrice] = useState(false);
   const [resettingInsights, setResettingInsights] = useState(false);
+  const [downloadingTranscripts, setDownloadingTranscripts] = useState(false);
+  const [openingDownloads, setOpeningDownloads] = useState(false);
 
   const handleFetchFinancials = async () => {
     if (!stock) return;
@@ -150,6 +152,83 @@ export default function StockDetailPage() {
       });
     } finally {
       setResettingInsights(false);
+    }
+  };
+
+  const handleDownloadTranscripts = async () => {
+    if (!stock) return;
+    if (downloadingTranscripts) return;
+    setDownloadingTranscripts(true);
+    try {
+      const response = await fetch("/api/transcripts/download", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          window: "3q",
+          symbols: [stock.ticker],
+        }),
+      });
+
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) {
+        const message = body?.error || `Download failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      toast({
+        title: "Downloads updated",
+        description: `Fetched transcripts/results for ${stock.ticker}.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Download failed",
+        description: err?.message ?? "Could not download transcripts/results.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingTranscripts(false);
+    }
+  };
+
+  const handleOpenDownloads = async () => {
+    if (!stock) return;
+    if (openingDownloads) return;
+    setOpeningDownloads(true);
+    try {
+      const response = await fetch(`/api/transcripts/files/${encodeURIComponent(stock.ticker)}`);
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok || !body?.ok) {
+        const message = body?.error || `Could not load downloaded files (status ${response.status})`;
+        throw new Error(message);
+      }
+
+      const files = Array.isArray(body.files) ? body.files : [];
+      if (!files.length) {
+        toast({
+          title: "No downloads yet",
+          description: `No transcripts or earnings PDFs found for ${stock.ticker}.`,
+        });
+        return;
+      }
+
+      // Open the latest file in a new tab
+      const latest = files[files.length - 1];
+      window.open(latest.url, "_blank", "noopener,noreferrer");
+      toast({
+        title: "Opened latest file",
+        description: `${latest.symbol} ${latest.quarter}`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Open failed",
+        description: err?.message ?? "Could not open downloaded files.",
+        variant: "destructive",
+      });
+    } finally {
+      setOpeningDownloads(false);
     }
   };
 
@@ -294,6 +373,34 @@ export default function StockDetailPage() {
                 <RefreshCw className="h-3 w-3" />
               )}
               <span className="ml-1">Reset AI insights</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadTranscripts}
+              disabled={downloadingTranscripts}
+              className="font-mono text-xs"
+            >
+              {downloadingTranscripts ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FileText className="h-3 w-3" />
+              )}
+              <span className="ml-1">Download filings</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenDownloads}
+              disabled={openingDownloads}
+              className="font-mono text-xs"
+            >
+              {openingDownloads ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FileText className="h-3 w-3" />
+              )}
+              <span className="ml-1">View filings</span>
             </Button>
           </div>
         </div>

@@ -16,6 +16,10 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:4000",
         changeOrigin: true,
       },
+      "/files": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

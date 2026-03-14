@@ -1,0 +1,21 @@
+{
+  "name": "nse-screener-downloader-node",
+  "version": "0.1.0",
+  "description": "Node.js version of NSE + Screener PDF downloader (mirrors Python functionality for service/backend use).",
+  "type": "module",
+  "main": "src/runFullDownload.js",
+  "scripts": {
+    "start": "node src/runFullDownload.js",
+    "nse": "node src/nseDownloader.js",
+    "screener": "node src/screenerScraper.js",
+    "merge": "node src/mergeScreenerIntoNse.js",
+    "verify": "node src/verifyDownloads.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0-rc.12",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.4.5"
+  }
+}
+
