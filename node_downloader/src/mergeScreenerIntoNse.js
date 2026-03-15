@@ -12,6 +12,8 @@ import tls from "node:tls";
 import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "./config.js";
 import { ensureDirSync, readJsonSync, writeJsonSync, sleep } from "./utils.js";
+import { extractQuarterFromPdf } from "./pdfQuarterParser.js";
+import { eventDateToResultsQuarter } from "./quarterFromEventDate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +33,41 @@ const ALLOWED_CATEGORIES = new Set([
 ]);
 
 const DOWNLOAD_DELAY_MS = 1000;
+
+const PDF_MAGIC = Buffer.from("%PDF", "ascii");
+function isPdfBuffer(buf) {
+  if (!buf || !(buf instanceof Buffer)) return false;
+  return buf.length >= 4 && buf.slice(0, 4).equals(PDF_MAGIC);
+}
+
+/** If response is HTML (e.g. BSE attachment page), try to find a direct PDF link. Returns first candidate URL or null. */
+function extractPdfUrlFromHtml(htmlBuffer, baseUrl) {
+  if (!htmlBuffer || htmlBuffer.length < 100) return null;
+  const str = htmlBuffer.toString("utf8", 0, Math.min(htmlBuffer.length, 50000));
+  const base = baseUrl ? new URL(baseUrl) : null;
+  const hrefRe = /href\s*=\s*["']([^"']+)["']/gi;
+  const candidates = [];
+  let m;
+  while ((m = hrefRe.exec(str)) !== null) {
+    const href = m[1].trim();
+    const lower = href.toLowerCase();
+    if (lower.endsWith(".pdf")) {
+      try {
+        const url = base ? new URL(href, base).href : href;
+        if (url.startsWith("http")) candidates.push(url);
+      } catch (_) {}
+    } else if (
+      (lower.includes("bseindia.com") || lower.includes("nseindia.com")) &&
+      (lower.includes("attach") || lower.includes("corpfiling") || lower.includes("annual") || lower.includes("pdf"))
+    ) {
+      try {
+        const url = base ? new URL(href, base).href : href;
+        if (url.startsWith("http")) candidates.push(url);
+      } catch (_) {}
+    }
+  }
+  return candidates.length > 0 ? candidates[0] : null;
+}
 
 // Map history window to max quarters to backfill, roughly matching Python:
 // 6m ≈ 2 quarters, 1y ≈ 4, 2y ≈ 8, 3q = 3.
@@ -74,22 +111,32 @@ function parseLabelDate(labelOrLink) {
   return dayjs(`${year}-${String(month).padStart(2, "0")}-01`);
 }
 
-function fiscalQuarterFromDate(d) {
-  const year = d.year();
-  const month = d.month() + 1;
-  const fyYear = month >= 4 ? year + 1 : year;
-  let q;
-  if (month >= 4 && month <= 6) q = 1;
-  else if (month >= 7 && month <= 9) q = 2;
-  else if (month >= 10 && month <= 12) q = 3;
-  else q = 4;
-  return `FY${String(fyYear).slice(-2)}-Q${q}`;
+/** Try to parse explicit quarter from label text (e.g. "Q2 FY26", "Quarter 1 FY26"). Returns null if not found. */
+function parseExplicitQuarterFromLabel(link) {
+  const text = [link?.label, link?.link_text].filter(Boolean).join(" ");
+  if (!text) return null;
+  const m1 = text.match(/q([1-4])\s*fy\s*(\d{2}|\d{4})/i) || text.match(/q([1-4])fy(\d{2}|\d{4})/i);
+  if (m1) {
+    const qNum = Number(m1[1]);
+    const fy = m1[2].length === 2 ? m1[2] : String(m1[2]).slice(-2);
+    if (qNum >= 1 && qNum <= 4) return `FY${fy}-Q${qNum}`;
+  }
+  const m2 = text.match(/quarter\s*([1-4])\s*(?:of\s*)?fy\s*(\d{2}|\d{4})/i);
+  if (m2) {
+    const qNum = Number(m2[1]);
+    const fy = m2[2].length === 2 ? m2[2] : String(m2[2]).slice(-2);
+    if (qNum >= 1 && qNum <= 4) return `FY${fy}-Q${qNum}`;
+  }
+  return null;
 }
 
 function mapLinkToQuarter(link) {
+  const explicit = parseExplicitQuarterFromLabel(link);
+  if (explicit) return explicit;
   const d = parseLabelDate(link);
   if (!d) return null;
-  return fiscalQuarterFromDate(d);
+  // Label date is event date (call/announcement). Use shared rule: Jan→Q3, Apr→Q4, Jul→Q1, Oct→Q2.
+  return eventDateToResultsQuarter(d);
 }
 
 function groupLinksBySymbolQuarter(links) {
@@ -204,6 +251,10 @@ async function downloadViaRawTls(url, referer, savePath) {
     });
   });
 
+  if (!isPdfBuffer(bodyBuffer)) {
+    console.warn(`Raw TLS response is not a PDF, skipping: ${linkHref.slice(0, 80)}`);
+    return null;
+  }
   fs.writeFileSync(savePath, bodyBuffer);
   console.log(`Saved via raw TLS: ${savePath}`);
   return savePath;
@@ -267,7 +318,31 @@ async function downloadFile(link, folderPath, category) {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      fs.writeFileSync(savePath, res.data);
+      const data = Buffer.isBuffer(res.data) ? res.data : Buffer.from(res.data);
+      if (!isPdfBuffer(data)) {
+        if (category === "earnings_result") {
+          const pdfUrl = extractPdfUrlFromHtml(data, link.href);
+          if (pdfUrl && pdfUrl !== link.href) {
+            await sleep(DOWNLOAD_DELAY_MS);
+            try {
+              const res2 = await client.get(pdfUrl, { responseType: "arraybuffer" });
+              if (res2.status >= 200 && res2.status < 300) {
+                const data2 = Buffer.isBuffer(res2.data) ? res2.data : Buffer.from(res2.data);
+                if (isPdfBuffer(data2)) {
+                  fs.writeFileSync(savePath, data2);
+                  console.log(`Saved (earnings fallback URL): ${savePath}`);
+                  return savePath;
+                }
+              }
+            } catch (_) {}
+          }
+        }
+        console.warn(
+          `Response is not a PDF (got ${data.length} bytes), skipping: ${link.href.slice(0, 80)}`,
+        );
+        return null;
+      }
+      fs.writeFileSync(savePath, data);
       console.log(`Saved: ${savePath}`);
       return savePath;
     } catch (err) {
@@ -287,74 +362,162 @@ async function downloadFile(link, folderPath, category) {
   return null;
 }
 
-async function backfillQuarterForSymbol(symbol, quarter, links) {
+function removeCorruptedPdfsInFolder(folder, meta) {
+  if (!fs.existsSync(folder)) return meta;
+  const names = fs.readdirSync(folder);
+  let metaOut = meta;
+  for (const name of names) {
+    if (!name.toLowerCase().endsWith(".pdf")) continue;
+    const filePath = path.join(folder, name);
+    try {
+      const buf = Buffer.alloc(4);
+      const fd = fs.openSync(filePath, "r");
+      fs.readSync(fd, buf, 0, 4, 0);
+      fs.closeSync(fd);
+      if (!buf.equals(PDF_MAGIC)) {
+        fs.unlinkSync(filePath);
+        metaOut = metaOut.filter((m) => m.filename !== name);
+        console.warn(`Removed corrupted (non-PDF) file: ${path.join(folder, name)}`);
+      }
+    } catch (_) {
+      // ignore read errors
+    }
+  }
+  return metaOut;
+}
+
+async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersForSymbol = null) {
   const folder = path.join(DATA_DIR, symbol, quarter);
   ensureDirSync(folder);
 
   const metaPath = path.join(folder, "meta.json");
-  const meta = readJsonSync(metaPath, []);
+  let meta = readJsonSync(metaPath, []);
+  meta = removeCorruptedPdfsInFolder(folder, meta);
+  if (meta.length > 0) writeJsonSync(metaPath, meta);
+
+  const allowedSet = allowedQuartersForSymbol instanceof Set ? allowedQuartersForSymbol : null;
+
   const existingCats = new Set(meta.map((m) => m.category));
+  let hasEarnings = existingCats.has("earnings_result");
+  let hasPpt = existingCats.has("investor_presentation");
+  let hasConcall = existingCats.has("concall_transcript");
 
-  const hasEarnings = existingCats.has("earnings_result");
-  const hasPpt = existingCats.has("investor_presentation");
-  const hasConcall = existingCats.has("concall_transcript");
+  const earningsLinks = links
+    .filter((l) => l.section === "earnings")
+    .sort((a, b) => {
+      const order = (href) => {
+        const h = (href || "").toLowerCase();
+        if (h.includes("nseindia.com")) return 0;
+        if (h.includes("bseindia.com")) return 1;
+        return 2;
+      };
+      return order(a.href) - order(b.href);
+    });
+  const presentationLinks = links.filter((l) => l.section === "presentation");
+  const concallLinks = links.filter((l) => l.section === "concall");
 
-  for (const link of links) {
-    if (link.section === "earnings" && !hasEarnings) {
-      const savePath = await downloadFile(link, folder, "earnings_result");
-      if (savePath) {
-        meta.push({
-          filename: path.basename(savePath),
-          category: "earnings_result",
-          description: link.link_text,
-          attachment_text: link.label,
-          announcement_date: "",
-          sort_date: "",
-          seq_id: "",
-          source_url: link.href,
-          file_size: "",
-        });
+  async function validatePdfQuarterAndKeep(savePath, expectedQuarter, categoryLabel, linkForMeta = null) {
+    if (!savePath || !fs.existsSync(savePath)) return false;
+    try {
+      const detectedQuarter = await extractQuarterFromPdf(savePath);
+      if (detectedQuarter == null || detectedQuarter === expectedQuarter) return true;
+      // Mismatch: PDF content is for a different quarter (often Screener link points to old doc).
+      const moveToCorrectQuarter = allowedSet && allowedSet.has(detectedQuarter) && path.dirname(savePath) !== path.join(DATA_DIR, symbol, detectedQuarter);
+      if (moveToCorrectQuarter) {
+        const targetDir = path.join(DATA_DIR, symbol, detectedQuarter);
+        ensureDirSync(targetDir);
+        const baseName = path.basename(savePath);
+        const newName = baseName.replace(expectedQuarter, detectedQuarter);
+        const targetPath = path.join(targetDir, newName);
+        if (targetPath !== savePath) {
+          fs.renameSync(savePath, targetPath);
+          const targetMetaPath = path.join(targetDir, "meta.json");
+          const targetMeta = readJsonSync(targetMetaPath, []);
+          const hasAlready = targetMeta.some((m) => m.category === categoryLabel);
+          if (!hasAlready && linkForMeta) {
+            targetMeta.push({
+              filename: newName,
+              category: categoryLabel,
+              description: linkForMeta.link_text,
+              attachment_text: linkForMeta.label,
+              announcement_date: "",
+              sort_date: "",
+              seq_id: "",
+              source_url: linkForMeta.href,
+              file_size: "",
+            });
+            writeJsonSync(targetMetaPath, targetMeta);
+          }
+          console.log(`[Merge] Moved to correct quarter: ${path.basename(savePath)} → ${symbol}/${detectedQuarter}/${newName} (content was ${detectedQuarter}, not ${expectedQuarter})`);
+        }
+        return false;
       }
-    } else if (link.section === "presentation" && !hasPpt) {
-      const savePath = await downloadFile(
-        link,
-        folder,
-        "investor_presentation",
+      fs.unlinkSync(savePath);
+      console.warn(
+        `[Merge] Quarter mismatch: PDF content is ${detectedQuarter} but link was for ${expectedQuarter}. Link may point to old document. Discarded: ${path.basename(savePath)} (${categoryLabel}).`,
       );
-      if (savePath) {
-        meta.push({
-          filename: path.basename(savePath),
-          category: "investor_presentation",
-          description: link.link_text,
-          attachment_text: link.label,
-          announcement_date: "",
-          sort_date: "",
-          seq_id: "",
-          source_url: link.href,
-          file_size: "",
-        });
-      }
-    } else if (link.section === "concall" && !hasConcall) {
-      const savePath = await downloadFile(
-        link,
-        folder,
-        "concall_transcript",
-      );
-      if (savePath) {
-        meta.push({
-          filename: path.basename(savePath),
-          category: "concall_transcript",
-          description: link.link_text,
-          attachment_text: link.label,
-          announcement_date: "",
-          sort_date: "",
-          seq_id: "",
-          source_url: link.href,
-          file_size: "",
-        });
-      }
+      return false;
+    } catch (err) {
+      console.warn(`[Merge] Could not parse PDF for quarter check (${path.basename(savePath)}): ${err.message}. Keeping file.`);
+      return true;
     }
+  }
 
+  for (const link of earningsLinks) {
+    if (hasEarnings) break;
+    const savePath = await downloadFile(link, folder, "earnings_result");
+    if (savePath && (await validatePdfQuarterAndKeep(savePath, quarter, "earnings_result", link))) {
+      meta.push({
+        filename: path.basename(savePath),
+        category: "earnings_result",
+        description: link.link_text,
+        attachment_text: link.label,
+        announcement_date: "",
+        sort_date: "",
+        seq_id: "",
+        source_url: link.href,
+        file_size: "",
+      });
+      hasEarnings = true;
+    }
+    await sleep(DOWNLOAD_DELAY_MS);
+  }
+  for (const link of presentationLinks) {
+    if (hasPpt) break;
+    const savePath = await downloadFile(link, folder, "investor_presentation");
+    if (savePath && (await validatePdfQuarterAndKeep(savePath, quarter, "investor_presentation", link))) {
+      meta.push({
+        filename: path.basename(savePath),
+        category: "investor_presentation",
+        description: link.link_text,
+        attachment_text: link.label,
+        announcement_date: "",
+        sort_date: "",
+        seq_id: "",
+        source_url: link.href,
+        file_size: "",
+      });
+      hasPpt = true;
+    }
+    await sleep(DOWNLOAD_DELAY_MS);
+  }
+  for (const link of concallLinks) {
+    if (hasConcall) break;
+    const savePath = await downloadFile(link, folder, "concall_transcript");
+    if (savePath && (await validatePdfQuarterAndKeep(savePath, quarter, "concall_transcript", link))) {
+      meta.push({
+        filename: path.basename(savePath),
+        category: "concall_transcript",
+        description: link.link_text,
+        attachment_text: link.label,
+        announcement_date: "",
+        sort_date: "",
+        seq_id: "",
+        source_url: link.href,
+        file_size: "",
+      });
+      hasConcall = true;
+    }
     await sleep(DOWNLOAD_DELAY_MS);
   }
 
@@ -420,16 +583,13 @@ export async function runMerge({ window = "3q" } = {}) {
   for (const [key, linksForKey] of bySymbolQuarter.entries()) {
     const [symbol, quarter] = key.split("|");
     const allowedSet = allowedBySymbol.get(symbol);
-    const existingSet = existingBySymbol.get(symbol);
     if (allowedSet && !allowedSet.has(quarter)) {
       continue;
     }
-    if (existingSet && !existingSet.has(quarter)) {
-      // Quarter not present from NSE for this symbol; skip to match Python behaviour.
-      continue;
-    }
+    // Process quarter if NSE created it or we have Screener links (create folder and backfill earnings/concall/presentation from Screener)
+    if (linksForKey.length === 0) continue;
     console.log(`Merging Screener for ${symbol} ${quarter}...`);
-    await backfillQuarterForSymbol(symbol, quarter, linksForKey);
+    await backfillQuarterForSymbol(symbol, quarter, linksForKey, allowedSet ?? undefined);
   }
 
   console.log("Merge complete (Node).");

@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 // Result: project-root / data_node
 export const DATA_DIR = path.resolve(__dirname, "..", "..", "data_node");
 
-// Default watchlist (same as Python)
+// Fallback when run standalone (CLI). When invoked from backend API, symbols come from database.
 export const WATCHLIST = [
   "ANANTRAJ",
   "INOXINDIA",

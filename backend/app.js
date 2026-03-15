@@ -1,19 +1,26 @@
 import express from "express";
-import path from "node:path";
-import { DATA_DIR } from "../node_downloader/src/config.js";
+import { getDataDir } from "./config/dataDir.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { stocksRouter } from "./routes/stocks.routes.js";
 import { transcriptsRouter } from "./routes/transcripts.routes.js";
+import { proxyRouter } from "./routes/proxy.routes.js";
+import { priceRouter } from "./routes/price.routes.js";
+import { financialsRouter } from "./routes/financials.routes.js";
+import authRouter from "./routes/auth.routes.js";
 
 export const app = express();
 
 app.use(express.json());
 
-// Static files for downloaded PDFs
-app.use("/files", express.static(DATA_DIR));
+// Static files for downloaded PDFs (same path as listing uses)
+app.use("/files", express.static(getDataDir()));
 
 // API routes
 app.use(healthRouter);
+app.use(authRouter);
+app.use(proxyRouter);
+app.use(priceRouter);
+app.use(financialsRouter);
 app.use(stocksRouter);
 app.use(transcriptsRouter);
 

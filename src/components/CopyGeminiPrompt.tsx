@@ -170,11 +170,7 @@ INSTRUCTIONS
    - 60–79: Thesis intact but execution still pending.
    - 40–59: Increasing uncertainty or delayed milestones.
    - < 40: Thesis deterioration or broken commitments.
-9. Extract ALL new forward-looking commitments as new_promises and assign a confidence tier based on management's historical track record and tone.
-
----
-[PASTE TRANSCRIPT AND/OR RESULTS BELOW]
----`;
+9. Extract ALL new forward-looking commitments as new_promises and assign a confidence tier based on management's historical track record and tone.`;
 
     try {
       await navigator.clipboard.writeText(prompt);

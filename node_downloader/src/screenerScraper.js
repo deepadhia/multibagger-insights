@@ -45,31 +45,38 @@ function extractLinks(symbol, companyUrl, html) {
 
     if (!href || !lower) return;
 
+    const parent = $(el).closest("tr,div,li");
+    const parentText = parent.length ? parent.text().trim() : "";
     const isTranscript =
-      lower.includes("transcript") || lower.includes("concall");
+      lower.includes("transcript") || lower.includes("concall") ||
+      (parentText && (parentText.toLowerCase().includes("transcript") || parentText.toLowerCase().includes("concall")));
     const isPpt = lower.includes("ppt") || lower.includes("presentation");
+    // Earnings = quarterly results PDF from NSE/BSE/Announcements. NOT "REC" (REC = concall recording in Concalls section).
     const isResult =
-      lower.includes("result") || lower.includes("financial") || lower.includes("quarterly");
+      (lower.includes("result") || lower.includes("financial") || lower.includes("quarterly")) &&
+      !lower.includes("earnings call"); // avoid concall/transcript links
 
     if (!(isTranscript || isPpt || isResult)) return;
 
-    // Try to find a nearby label (e.g. "Sep 2025")
-    let label = "";
-    const parentText = $(el).closest("tr,div,li").text();
-    if (parentText) {
-      label = parentText.trim();
-    } else {
-      label = text;
-    }
+    let label = parentText || text;
 
+    // REC and Transcript row: same row has "Transcript" so both get concall. Earnings come from NSE/BSE/announcements section only.
     let section = "other";
     if (isTranscript) section = "concall";
     else if (isPpt) section = "presentation";
-    else if (isResult) section = "earnings"; // same as Python: earnings_result backfill
+    else if (isResult) section = "earnings";
 
     const absoluteHref = href.startsWith("http")
       ? href
       : new URL(href, companyUrl).toString();
+
+    // Earnings: only real results PDFs; exclude Screener nav, annual reports, newspaper notices
+    if (section === "earnings") {
+      if (absoluteHref.includes("screener.in/screen") || absoluteHref.includes("screen/new")) return;
+      if (/create a stock screen|run queries on 10 years/i.test(text) || /create a stock screen|run queries on 10 years/i.test(label)) return;
+      if (/financial year\s*20\d{2}\s*(from bse|from nse)?/i.test(label) || /financial year\s*20\d{2}\s*(from bse|from nse)?/i.test(text)) return;
+      if (/newspaper\s*(publication|advertisement|ad\b)/i.test(label) || /newspaper\s*(publication|advertisement|ad\b)/i.test(text)) return;
+    }
 
     links.push({
       symbol,
@@ -84,25 +91,37 @@ function extractLinks(symbol, companyUrl, html) {
   return links;
 }
 
-async function scrapeForSymbol(client, symbol) {
-  const companyUrl = `https://www.screener.in/company/${symbol}/consolidated/`;
-  console.log(`Scraping Screener for ${symbol}: ${companyUrl}`);
+/**
+ * @param {string} ticker - Symbol to use in output links and folder (e.g. HBL).
+ * @param {string} [screenerSlug] - Slug for Screener URL; if omitted, uses ticker (e.g. HBLENGINE for HBL).
+ */
+async function scrapeForSymbol(client, ticker, screenerSlug = null) {
+  const slug = (screenerSlug || ticker).trim();
+  const companyUrl = `https://www.screener.in/company/${encodeURIComponent(slug)}/consolidated/`;
+  console.log(`Scraping Screener for ${ticker}: ${companyUrl}`);
   try {
     const res = await client.get(companyUrl);
     const html = res.data;
-    return extractLinks(symbol, companyUrl, html);
+    return extractLinks(ticker, companyUrl, html);
   } catch (err) {
     console.error(`Failed to scrape ${companyUrl}: ${err.message}`);
     return [];
   }
 }
 
-export async function runScreenerScraper(symbols = WATCHLIST) {
+/**
+ * @param {string[]} symbols - List of tickers (used for folder names and link symbol).
+ * @param {Map<string, string>} [screenerSlugByTicker] - Optional map ticker -> Screener slug (e.g. HBL -> HBLENGINE).
+ */
+export async function runScreenerScraper(symbols = WATCHLIST, screenerSlugByTicker = null) {
   const client = buildClient();
   const allLinks = [];
+  const list = Array.isArray(symbols) && symbols.length > 0 ? symbols : WATCHLIST;
+  const slugMap = screenerSlugByTicker instanceof Map ? screenerSlugByTicker : null;
 
-  for (const symbol of symbols) {
-    const links = await scrapeForSymbol(client, symbol);
+  for (const ticker of list) {
+    const slug = slugMap && slugMap.has(ticker) ? slugMap.get(ticker) : ticker;
+    const links = await scrapeForSymbol(client, ticker, slug);
     allLinks.push(...links);
   }
 

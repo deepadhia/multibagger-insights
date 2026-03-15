@@ -5,29 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Loader2, Check, AlertTriangle } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Progress } from "@/components/ui/progress";
-
-interface FetchStep {
-  label: string;
-  status: "pending" | "running" | "done" | "error";
-  error?: string;
-}
 
 export function AddStockDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [fetchingData, setFetchingData] = useState(false);
-  const [steps, setSteps] = useState<FetchStep[]>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
-  const updateStep = (index: number, update: Partial<FetchStep>) => {
-    setSteps(prev => prev.map((s, i) => i === index ? { ...s, ...update } : s));
-  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -55,60 +42,53 @@ export function AddStockDialog() {
 
     queryClient.invalidateQueries({ queryKey: ["stocks"] });
     setLoading(false);
+    setOpen(false);
 
-    // Start auto-fetching data
-    setFetchingData(true);
     const stockId = inserted.id;
+    toast({
+      title: "Stock added",
+      description: `Fetching price, financials & filings for ${ticker} in background…`,
+    });
 
-    const fetchSteps: FetchStep[] = [
-      { label: "Fetching live price", status: "pending" },
-      { label: "Fetching financials & peers", status: "pending" },
-    ];
-    setSteps(fetchSteps);
-
-    // Step 1: Price
-    updateStep(0, { status: "running" });
-    try {
-      await supabase.functions.invoke("fetch-price", { body: { ticker } });
-      updateStep(0, { status: "done" });
-    } catch (err: any) {
-      updateStep(0, { status: "error", error: err.message });
-    }
-
-    // Step 2: Financials
-    updateStep(1, { status: "running" });
-    try {
-      await supabase.functions.invoke("fetch-financials", {
-        body: { stock_id: stockId, ticker, screener_slug: screenerSlug },
-      });
-      updateStep(1, { status: "done" });
-    } catch (err: any) {
-      updateStep(1, { status: "error", error: err.message });
-    }
-
-    // Invalidate all queries
-    queryClient.invalidateQueries({ queryKey: ["stocks"] });
-    queryClient.invalidateQueries({ queryKey: ["prices", stockId] });
-    queryClient.invalidateQueries({ queryKey: ["financial-metrics", stockId] });
-    queryClient.invalidateQueries({ queryKey: ["financial-results", stockId] });
-    queryClient.invalidateQueries({ queryKey: ["shareholding", stockId] });
-    queryClient.invalidateQueries({ queryKey: ["peers", stockId] });
-
-    toast({ title: "Stock added & data fetched", description: `${ticker} is ready.` });
-    setFetchingData(false);
-
-    // Auto-close after brief delay
-    setTimeout(() => {
-      setOpen(false);
-      setSteps([]);
-    }, 1500);
+    // Run fetches in background (don't block UI)
+    (async () => {
+      try {
+        await fetch("/api/prices/fetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticker }),
+        });
+        queryClient.invalidateQueries({ queryKey: ["prices"] });
+      } catch (_) {}
+      try {
+        await fetch("/api/financials/fetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stock_id: stockId, ticker, screener_slug: screenerSlug }),
+        });
+        queryClient.invalidateQueries({ queryKey: ["financial-metrics", stockId] });
+        queryClient.invalidateQueries({ queryKey: ["financial-results", stockId] });
+        queryClient.invalidateQueries({ queryKey: ["shareholding", stockId] });
+        queryClient.invalidateQueries({ queryKey: ["peers", stockId] });
+      } catch (_) {}
+      try {
+        await fetch("/api/transcripts/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbols: [ticker],
+            onlyMissing: true,
+            uploadAfterDownload: true,
+            window: "1y",
+          }),
+        });
+        queryClient.invalidateQueries({ queryKey: ["transcripts-files"] });
+      } catch (_) {}
+    })();
   };
 
-  const completedSteps = steps.filter(s => s.status === "done" || s.status === "error").length;
-  const progressPct = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 0;
-
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!fetchingData) setOpen(v); }}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="font-mono">
           <Plus className="h-4 w-4 mr-1" /> Add Stock
@@ -119,29 +99,7 @@ export function AddStockDialog() {
           <DialogTitle className="font-mono text-primary">Add Stock</DialogTitle>
         </DialogHeader>
 
-        {fetchingData ? (
-          <div className="space-y-4 py-4">
-            <div className="text-center">
-              <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary mb-2" />
-              <p className="font-mono text-sm text-foreground">Importing data...</p>
-            </div>
-            <Progress value={progressPct} className="h-1.5" />
-            <div className="space-y-2">
-              {steps.map((step, i) => (
-                <div key={i} className="flex items-center gap-2 font-mono text-xs">
-                  {step.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
-                  {step.status === "done" && <Check className="h-3 w-3 text-terminal-green" />}
-                  {step.status === "error" && <AlertTriangle className="h-3 w-3 text-terminal-amber" />}
-                  {step.status === "pending" && <div className="h-3 w-3 rounded-full border border-muted-foreground/30" />}
-                  <span className={step.status === "done" ? "text-terminal-green" : step.status === "error" ? "text-terminal-amber" : "text-muted-foreground"}>
-                    {step.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="font-mono text-xs">Company Name</Label>
@@ -186,10 +144,9 @@ export function AddStockDialog() {
               <Textarea name="investment_thesis" className="bg-muted border-border font-mono" rows={3} />
             </div>
             <Button type="submit" disabled={loading} className="w-full font-mono">
-              {loading ? "Adding..." : "Add Stock"}
+              {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Adding...</> : "Add Stock"}
             </Button>
           </form>
-        )}
       </DialogContent>
     </Dialog>
   );

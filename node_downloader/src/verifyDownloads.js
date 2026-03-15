@@ -8,10 +8,11 @@ export const ALLOWED_CATEGORIES = new Set([
   "investor_presentation",
 ]);
 
-export function verifyOutput() {
+export function verifyOutput(dataDir) {
+  const baseDir = dataDir || DATA_DIR;
   const lines = ["VERIFICATION REPORT (Node)", "-".repeat(50)];
-  lines.push(`Checking: ${DATA_DIR}`);
-  if (!fs.existsSync(DATA_DIR)) {
+  lines.push(`Checking: ${baseDir}`);
+  if (!fs.existsSync(baseDir)) {
     lines.push("Folder not found. Run failed or was skipped.");
     return { ok: false, report: lines.join("\n") };
   }
@@ -20,8 +21,8 @@ export function verifyOutput() {
   const bad = [];
   let total = 0;
 
-  for (const symbolName of fs.readdirSync(DATA_DIR)) {
-    const symbolDir = path.join(DATA_DIR, symbolName);
+  for (const symbolName of fs.readdirSync(baseDir)) {
+    const symbolDir = path.join(baseDir, symbolName);
     if (!fs.statSync(symbolDir).isDirectory()) continue;
     if (["download_log.json", "watcher_state.json"].includes(symbolName)) {
       continue;

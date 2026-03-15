@@ -163,6 +163,8 @@ The app will be available at `http://localhost:5173`.
 - **Multibagger signal detection**: Automated scoring based on financials, shareholding, management credibility
 - **Thesis tracking**: Track investment thesis drift across quarters
 - **Sector indices**: Nifty sector performance comparison
+- **Announcements**: On each stock’s detail page, an **Announcements** tab lists downloaded filings (earnings, concall transcripts, investor presentations) by quarter and type with **View** links. Use **Download filings** to fetch from NSE & Screener.
+- **Google Drive upload** (optional): Upload announcements to a Drive folder in a structured layout. See [docs/GOOGLE_DRIVE_SETUP.md](docs/GOOGLE_DRIVE_SETUP.md) for creating a service account and API key.
 
 ## Database
 

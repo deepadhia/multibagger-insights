@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { ToneBadge } from "@/components/ToneBadge";
 import { InvestmentThesisEditor } from "@/components/InvestmentThesisEditor";
@@ -15,7 +16,6 @@ import { SnapshotsTab } from "@/components/SnapshotsTab";
 import { CopyGeminiPrompt } from "@/components/CopyGeminiPrompt";
 import { ImportGeminiResponse } from "@/components/ImportGeminiResponse";
 import { MasterPromptEditor } from "@/components/MasterPromptEditor";
-import { TranscriptDownloader } from "@/components/TranscriptDownloader";
 import { DealsTab } from "@/components/DealsTab";
 import { ThesisScore } from "@/components/ThesisScore";
 import { ThesisTimeline } from "@/components/ThesisTimeline";
@@ -27,12 +27,12 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, Loader2, DollarSign, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Target, AlertTriangle, Zap, Quote,
-  BarChart3, Activity, Shield, FileText, Users, Briefcase,
+  BarChart3, Activity, Shield, FileText, Users, Briefcase, ExternalLink, Trash2,
 } from "lucide-react";
 
 const chartTooltipStyle = {
@@ -61,17 +61,57 @@ export default function StockDetailPage() {
   const [fetchingFinancials, setFetchingFinancials] = useState(false);
   const [fetchingPrice, setFetchingPrice] = useState(false);
   const [resettingInsights, setResettingInsights] = useState(false);
-  const [downloadingTranscripts, setDownloadingTranscripts] = useState(false);
-  const [openingDownloads, setOpeningDownloads] = useState(false);
+  const [resettingFiles, setResettingFiles] = useState(false);
+
+  const { data: filingsData, isLoading: filingsLoading, refetch: refetchFilings } = useQuery({
+    queryKey: ["transcripts-files", stock?.ticker],
+    queryFn: async () => {
+      const r = await fetch(`/api/transcripts/files/${encodeURIComponent(stock!.ticker)}`);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    enabled: !!stock?.ticker,
+  });
+  const filings = (filingsData?.ok && Array.isArray(filingsData.files)) ? filingsData.files : [];
+
+  const apiBase = (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? "";
+  const { data: driveStatusData } = useQuery({
+    queryKey: ["transcripts-drive-status"],
+    queryFn: async () => {
+      const r = await fetch(`${apiBase}/api/transcripts/drive-status`);
+      if (!r.ok) throw new Error(`Drive status: ${r.status}`);
+      const data = await r.json();
+      return { driveConfigured: data?.driveConfigured === true, needsConnect: data?.needsConnect === true };
+    },
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+  const driveConfigured = driveStatusData?.driveConfigured === true;
+  const needsConnect = driveStatusData?.needsConnect === true;
+  const [uploadingToDrive, setUploadingToDrive] = useState(false);
+  const [lastUploadErrors, setLastUploadErrors] = useState<Array<{ symbol: string; quarter: string; filename: string; error: string }> | null>(null);
+  const [announcementCategoryFilter, setAnnouncementCategoryFilter] = useState<string | null>(null); // null = All
+  const [deletingFileKey, setDeletingFileKey] = useState<string | null>(null);
+  const [fetchingFilingsForStock, setFetchingFilingsForStock] = useState(false);
 
   const handleFetchFinancials = async () => {
     if (!stock) return;
     setFetchingFinancials(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-financials", {
-        body: { stock_id: stock.id, ticker: stock.ticker, screener_slug: stock.screener_slug || stock.ticker },
+      const r = await fetch("/api/financials/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stock_id: stock.id,
+          ticker: stock.ticker,
+          screener_slug: stock.screener_slug || stock.ticker,
+        }),
       });
-      if (error) throw error;
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast({ title: "Financials unavailable", description: data?.error || `Request failed: ${r.status}`, variant: "destructive" });
+        return;
+      }
       if (data?.success === false) {
         toast({ title: "Financials unavailable", description: data.error || `Could not fetch data for ${stock.ticker}`, variant: "destructive" });
         return;
@@ -81,8 +121,8 @@ export default function StockDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["shareholding", id] });
       queryClient.invalidateQueries({ queryKey: ["peers", id] });
       toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Request failed", variant: "destructive" });
     } finally {
       setFetchingFinancials(false);
     }
@@ -92,12 +132,16 @@ export default function StockDetailPage() {
     if (!stock) return;
     setFetchingPrice(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-price", {
-        body: { ticker: stock.ticker },
+      const r = await fetch("/api/prices/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: stock.ticker }),
       });
-
-      if (error) throw error;
-
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast({ title: "Live price unavailable", description: data?.error || `Request failed: ${r.status}`, variant: "destructive" });
+        return;
+      }
       if (data?.success === false) {
         toast({
           title: "Live price unavailable",
@@ -106,11 +150,10 @@ export default function StockDetailPage() {
         });
         return;
       }
-
       queryClient.invalidateQueries({ queryKey: ["prices", id] });
       toast({ title: "Price updated", description: `${stock.ticker}: ₹${data.price}` });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Request failed", variant: "destructive" });
     } finally {
       setFetchingPrice(false);
     }
@@ -155,80 +198,119 @@ export default function StockDetailPage() {
     }
   };
 
-  const handleDownloadTranscripts = async () => {
+  const handleResetFiles = async (period: "3m" | "6m" | "1y") => {
     if (!stock) return;
-    if (downloadingTranscripts) return;
-    setDownloadingTranscripts(true);
+    if (resettingFiles) return;
+    setResettingFiles(true);
     try {
-      const response = await fetch("/api/transcripts/download", {
+      const r = await fetch("/api/transcripts/reset", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          window: "3q",
-          symbols: [stock.ticker],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period, symbol: stock.ticker }),
       });
-
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.ok) {
-        const message = body?.error || `Download failed with status ${response.status}`;
-        throw new Error(message);
-      }
-
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data?.error || `Reset failed: ${r.status}`);
+      queryClient.invalidateQueries({ queryKey: ["transcripts-files", stock.ticker] });
+      await refetchFilings();
+      const periodLabel = period === "3m" ? "3 months" : period === "6m" ? "6 months" : "1 year";
+      const localMsg = data?.deleted ? `${data.deleted} local file(s)` : "";
+      const driveMsg = data?.deletedFromDrive ? `${data.deletedFromDrive} from Drive` : "";
+      const parts = [localMsg, driveMsg].filter(Boolean);
+      const description = parts.length ? `Removed: ${parts.join(", ")} (last ${periodLabel}).` : `Done. No files in last ${periodLabel}.`;
       toast({
-        title: "Downloads updated",
-        description: `Fetched transcripts/results for ${stock.ticker}.`,
+        title: "Files reset",
+        description,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
-        title: "Download failed",
-        description: err?.message ?? "Could not download transcripts/results.",
+        title: "Reset failed",
+        description: err instanceof Error ? err.message : "Could not reset files.",
         variant: "destructive",
       });
     } finally {
-      setDownloadingTranscripts(false);
+      setResettingFiles(false);
     }
   };
 
-  const handleOpenDownloads = async () => {
+  const handleUploadToDrive = async () => {
     if (!stock) return;
-    if (openingDownloads) return;
-    setOpeningDownloads(true);
+    if (uploadingToDrive) return;
+    setUploadingToDrive(true);
+    setLastUploadErrors(null);
     try {
-      const response = await fetch(`/api/transcripts/files/${encodeURIComponent(stock.ticker)}`);
-      const body = await response.json().catch(() => null);
-
-      if (!response.ok || !body?.ok) {
-        const message = body?.error || `Could not load downloaded files (status ${response.status})`;
-        throw new Error(message);
-      }
-
-      const files = Array.isArray(body.files) ? body.files : [];
-      if (!files.length) {
+      const r = await fetch("/api/transcripts/upload-to-drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: stock.ticker }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
         toast({
-          title: "No downloads yet",
-          description: `No transcripts or earnings PDFs found for ${stock.ticker}.`,
+          title: "Upload failed",
+          description: data?.error ?? `Status ${r.status}`,
+          variant: "destructive",
         });
         return;
       }
-
-      // Open the latest file in a new tab
-      const latest = files[files.length - 1];
-      window.open(latest.url, "_blank", "noopener,noreferrer");
+      const n = data.uploaded ?? 0;
+      const errs = Array.isArray(data.errors) ? data.errors : [];
+      if (errs.length > 0) setLastUploadErrors(errs);
+      else setLastUploadErrors(null);
       toast({
-        title: "Opened latest file",
-        description: `${latest.symbol} ${latest.quarter}`,
+        title: "Uploaded to Drive",
+        description: n ? `${n} file(s) uploaded for ${stock.ticker}.` : "No new files to upload.",
       });
-    } catch (err: any) {
+      if (errs.length > 0) {
+        toast({
+          title: "Some uploads failed",
+          description: `${errs.length} file(s) failed. Use Retry to try again.`,
+          variant: "destructive",
+        });
+      }
+      if (n > 0 || errs.length > 0) refetchFilings();
+    } catch (err: unknown) {
       toast({
-        title: "Open failed",
-        description: err?.message ?? "Could not open downloaded files.",
+        title: "Upload failed",
+        description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
     } finally {
-      setOpeningDownloads(false);
+      setUploadingToDrive(false);
+    }
+  };
+
+  const handleDeleteFiling = async (quarter: string, filename: string) => {
+    if (!stock?.ticker) return;
+    const key = `${quarter}-${filename}`;
+    setDeletingFileKey(key);
+    try {
+      const r = await fetch("/api/transcripts/delete-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: stock.ticker, quarter, filename }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.ok) {
+        toast({
+          title: "Delete failed",
+          description: data?.error ?? "Could not delete file.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: "File deleted",
+        description: data.deletedFromDrive ? "Removed locally and from Google Drive." : "Removed.",
+      });
+      await refetchFilings();
+    } catch (err: unknown) {
+      toast({
+        title: "Delete failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingFileKey(null);
     }
   };
 
@@ -374,34 +456,6 @@ export default function StockDetailPage() {
               )}
               <span className="ml-1">Reset AI insights</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDownloadTranscripts}
-              disabled={downloadingTranscripts}
-              className="font-mono text-xs"
-            >
-              {downloadingTranscripts ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <FileText className="h-3 w-3" />
-              )}
-              <span className="ml-1">Download filings</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleOpenDownloads}
-              disabled={openingDownloads}
-              className="font-mono text-xs"
-            >
-              {openingDownloads ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <FileText className="h-3 w-3" />
-              )}
-              <span className="ml-1">View filings</span>
-            </Button>
           </div>
         </div>
 
@@ -456,7 +510,6 @@ export default function StockDetailPage() {
           <InvestmentThesisEditor stockId={stock.id} thesis={stock.investment_thesis} />
           <MasterPromptEditor stockId={stock.id} trackingDirectives={stock.tracking_directives} metricKeys={stock.metric_keys} />
         </div>
-        <TranscriptDownloader ticker={stock.ticker} companyName={stock.company_name} screenerSlug={stock.screener_slug} stockId={stock.id} />
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4">
           {stock.buy_price && (
             <Card className="p-4 bg-card border-border card-glow flex flex-col items-center justify-center min-w-[120px]">
@@ -525,6 +578,9 @@ export default function StockDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="timeline" className="font-mono text-xs gap-1.5">
               <TrendingUp className="h-3 w-3" /> Timeline
+            </TabsTrigger>
+            <TabsTrigger value="announcements" className="font-mono text-xs gap-1.5">
+              <FileText className="h-3 w-3" /> Announcements
             </TabsTrigger>
           </TabsList>
 
@@ -1101,6 +1157,286 @@ export default function StockDetailPage() {
           {/* ═══ TIMELINE TAB ═══ */}
           <TabsContent value="timeline" className="space-y-4 mt-4">
             <ThesisTimeline snapshots={snapshots || []} promises={promises || []} />
+          </TabsContent>
+
+          {/* ═══ ANNOUNCEMENTS TAB ═══ */}
+          <TabsContent value="announcements" className="space-y-4 mt-4">
+            <Card className="p-4 bg-card border-border card-glow">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Downloaded filings — earnings, concall transcripts, investor presentations
+                </h3>
+                <div className="flex items-center gap-2">
+                  {(!driveConfigured || needsConnect) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="font-mono text-xs"
+                      onClick={() => { window.location.href = "/api/auth/drive/start"; }}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      Connect Google Drive
+                    </Button>
+                  )}
+                  {driveConfigured && (
+                    <>
+                      {filings.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleUploadToDrive}
+                          disabled={uploadingToDrive}
+                          className="font-mono text-xs"
+                        >
+                          {uploadingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                          <span className="ml-1">Upload to Drive</span>
+                        </Button>
+                      )}
+                      {lastUploadErrors && lastUploadErrors.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleUploadToDrive}
+                          disabled={uploadingToDrive}
+                          className="font-mono text-xs border-terminal-amber/50 text-terminal-amber hover:bg-terminal-amber/10"
+                        >
+                          {uploadingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                          <span className="ml-1">Retry failed ({lastUploadErrors.length})</span>
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={fetchingFilingsForStock || !stock?.ticker}
+                    onClick={async () => {
+                      if (!stock?.ticker) return;
+                      setFetchingFilingsForStock(true);
+                      try {
+                        const r = await fetch("/api/transcripts/download", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            symbols: [stock.ticker],
+                            window: "1y",
+                            onlyMissing: true,
+                            uploadAfterDownload: false,
+                            useWatchlist: false,
+                          }),
+                        });
+                        const data = await r.json().catch(() => ({}));
+                        if (!r.ok || !data?.ok) {
+                          throw new Error(data?.error || `Request failed: ${r.status}`);
+                        }
+                        // Refresh listings for this stock after successful fetch
+                        queryClient.invalidateQueries({ queryKey: ["transcripts-files", stock.ticker] });
+                        await refetchFilings();
+                        toast({
+                          title: "Filings fetched",
+                          description: `Fetched latest filings for ${stock.ticker}`,
+                        });
+                      } catch (err) {
+                        toast({
+                          title: "Fetch filings failed",
+                          description: err instanceof Error ? err.message : "Unknown error",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setFetchingFilingsForStock(false);
+                      }
+                    }}
+                    className="font-mono text-xs"
+                  >
+                    {fetchingFilingsForStock ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                    <span className="ml-1">Fetch for this stock</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={filingsLoading || !stock?.ticker}
+                    onClick={async () => {
+                      if (!stock?.ticker) return;
+                      queryClient.invalidateQueries({ queryKey: ["transcripts-files", stock.ticker] });
+                      const result = await refetchFilings();
+                      if (result.data?.ok && Array.isArray(result.data.files)) {
+                        const n = result.data.files.length;
+                        toast({
+                          title: "Refreshed",
+                          description: n > 0 ? `${n} filing(s) listed.` : "No filings in data folder. Use “Fetch filings” in the header to fetch.",
+                        });
+                      } else if (result.error) {
+                        toast({ title: "Refresh failed", description: String(result.error), variant: "destructive" });
+                      }
+                    }}
+                    className="font-mono text-xs"
+                  >
+                    {filingsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                    <span className="ml-1">Refresh</span>
+                  </Button>
+                  <span className="font-mono text-[10px] text-muted-foreground mx-1">Reset:</span>
+                  {(["3m", "6m", "1y"] as const).map((p) => (
+                    <Button
+                      key={p}
+                      variant="outline"
+                      size="sm"
+                      disabled={resettingFiles || filings.length === 0}
+                      onClick={() => handleResetFiles(p)}
+                      className="font-mono text-[10px] border-terminal-red/40 text-terminal-red hover:bg-terminal-red/10"
+                    >
+                      {resettingFiles ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      {p === "3m" ? "3 mo" : p === "6m" ? "6 mo" : "1 yr"}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              {filingsLoading ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground font-mono text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading…
+                </div>
+              ) : filings.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground font-mono text-sm">
+                  No announcements yet. Use <strong>Fetch filings</strong> in the header to download for all watchlist stocks and upload to Drive.
+                </div>
+              ) : (
+                <>
+                  {/* Category filter chips */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {[
+                      { value: null, label: "All" },
+                      { value: "earnings_result", label: "Earnings result" },
+                      { value: "concall_transcript", label: "Concall transcript" },
+                      { value: "investor_presentation", label: "Investor presentation" },
+                    ].map(({ value, label }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setAnnouncementCategoryFilter(value)}
+                        className={`rounded-full px-3 py-1 font-mono text-xs border transition-colors ${
+                          announcementCategoryFilter === value
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Accordion by quarter */}
+                  {(() => {
+                    const filtered = announcementCategoryFilter
+                      ? filings.filter((f: { category: string }) => f.category === announcementCategoryFilter)
+                      : filings;
+                    const byQuarter = filtered.reduce((acc: Record<string, typeof filings>, f: { quarter?: string }) => {
+                      const q = f.quarter ?? "";
+                      if (!q) return acc;
+                      if (!acc[q]) acc[q] = [];
+                      acc[q].push(f);
+                      return acc;
+                    }, {});
+                    const quarters = Object.keys(byQuarter).sort();
+                    const categoryLabels: Record<string, string> = {
+                      earnings_result: "Earnings result",
+                      concall_transcript: "Concall transcript",
+                      investor_presentation: "Investor presentation",
+                      other: "Other",
+                    };
+                    return (
+                      <Accordion
+                        type="multiple"
+                        className="w-full"
+                        defaultValue={quarters.length > 0 ? [quarters[0]] : []}
+                      >
+                        {quarters.map((q) => {
+                          const categoryOrder = ["earnings_result", "concall_transcript", "investor_presentation", "other"];
+                          const items = [...byQuarter[q]].sort((a: { category?: string }, b: { category?: string }) => {
+                            const i = categoryOrder.indexOf(a.category ?? "other");
+                            const j = categoryOrder.indexOf(b.category ?? "other");
+                            return (i === -1 ? 99 : i) - (j === -1 ? 99 : j);
+                          });
+                          return (
+                            <AccordionItem key={q} value={q}>
+                              <AccordionTrigger className="font-mono text-sm hover:no-underline">
+                                {q}
+                                <span className="ml-2 text-muted-foreground font-normal">
+                                  ({items.length} file{items.length !== 1 ? "s" : ""})
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent>
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b border-border/50">
+                                      <th className="text-left py-1.5 pr-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider">Category</th>
+                                      <th className="text-left py-1.5 pr-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider">Name</th>
+                                      <th className="text-left py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Date</th>
+                                      <th className="text-right py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {items.map((f: { quarter?: string; category?: string; label?: string; filename: string; announcement_date?: string; url: string; drive_web_link?: string; drive_file_id?: string }) => (
+                                      <tr key={`${f.quarter ?? q}-${f.filename}`} className="border-b border-border/50 hover:bg-muted/30">
+                                        <td className="py-1.5 pr-2">
+                                          <Badge variant="outline" className="font-mono text-[10px]">
+                                            {categoryLabels[f.category ?? ""] ?? f.label ?? f.category ?? "—"}
+                                          </Badge>
+                                        </td>
+                                        <td className="py-1.5 pr-2 text-foreground max-w-[280px] truncate" title={f.filename}>
+                                          {f.filename}
+                                        </td>
+                                        <td className="py-1.5 font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                                          {f.announcement_date ?? "—"}
+                                        </td>
+                                        <td className="py-1.5 text-right">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="font-mono text-xs h-6"
+                                            onClick={() => {
+                                              const driveUrl = f.drive_web_link || (f.drive_file_id ? `https://drive.google.com/file/d/${f.drive_file_id}/view` : null);
+                                              const openUrl = driveUrl || f.url;
+                                              if (openUrl) window.open(openUrl, "_blank", "noopener,noreferrer");
+                                            }}
+                                          >
+                                            <ExternalLink className="h-3 w-3 mr-1" /> Open
+                                          </Button>
+                                          {f.url && (f.drive_web_link || f.drive_file_id) && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="font-mono text-xs h-6 ml-1 text-muted-foreground"
+                                              onClick={() => window.open(f.url, "_blank", "noopener,noreferrer")}
+                                            >
+                                              Local
+                                            </Button>
+                                          )}
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="font-mono text-xs h-6 ml-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteFiling(f.quarter ?? "", f.filename)}
+                                            disabled={deletingFileKey === `${f.quarter ?? ""}-${f.filename}`}
+                                          >
+                                            {deletingFileKey === `${f.quarter ?? ""}-${f.filename}` ? (
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : (
+                                              <><Trash2 className="h-3 w-3 mr-1" /> Delete</>
+                                            )}
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </AccordionContent>
+                            </AccordionItem>
+                          );
+                        })}
+                      </Accordion>
+                    );
+                  })()}
+                </>
+              )}
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

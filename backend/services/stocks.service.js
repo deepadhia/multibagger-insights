@@ -55,3 +55,31 @@ export async function getAllTickers() {
   return result.rows.map((r) => String(r.ticker).toUpperCase());
 }
 
+/** Returns all stocks for batch operations: { id, ticker, screener_slug }[]. */
+export async function getAllStocks() {
+  const result = await pool.query(
+    "SELECT id, UPPER(TRIM(ticker)) AS ticker, screener_slug FROM stocks ORDER BY ticker",
+  );
+  return result.rows.map((r) => ({
+    id: r.id,
+    ticker: String(r.ticker || "").toUpperCase(),
+    screener_slug: r.screener_slug ? String(r.screener_slug).trim() : null,
+  }));
+}
+
+/** Returns { ticker, screener_slug } for pipeline to use correct Screener URL (e.g. HBL -> HBLENGINE). */
+export async function getTickersWithScreenerSlug(tickers) {
+  if (!Array.isArray(tickers) || tickers.length === 0) return new Map();
+  const result = await pool.query(
+    "SELECT UPPER(TRIM(ticker)) AS ticker, screener_slug FROM stocks WHERE UPPER(TRIM(ticker)) = ANY($1)",
+    [tickers.map((t) => String(t).toUpperCase())],
+  );
+  const map = new Map();
+  for (const row of result.rows) {
+    const t = String(row.ticker || "").toUpperCase();
+    const slug = row.screener_slug ? String(row.screener_slug).trim() : null;
+    map.set(t, slug || t);
+  }
+  return map;
+}
+

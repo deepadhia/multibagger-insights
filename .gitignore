@@ -12,11 +12,21 @@ dist
 dist-ssr
 *.local
 
+# Downloaded transcript/filing PDFs (node downloader output)
+data_node/
+data/
+
 # Environment files (never commit real secrets)
 .env
 .env.local
 .env.production
 node_downloader/.env
+
+# Google / service account credentials (never commit)
+**/client_secret*.json
+**/client_secret*apps.googleusercontent.com.json
+backend/secrets/
+backend/services/*.json
 
 # Editor directories and files
 .vscode/*

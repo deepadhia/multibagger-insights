@@ -41,8 +41,12 @@ export default function StocksPage() {
         let success = 0, failed = 0;
         for (const stock of stocks!) {
           try {
-            const { error } = await supabase.functions.invoke("fetch-price", { body: { ticker: stock.ticker } });
-            error ? failed++ : success++;
+            const r = await fetch("/api/prices/fetch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ticker: stock.ticker }),
+            });
+            r.ok ? success++ : failed++;
           } catch { failed++; }
         }
         queryClient.invalidateQueries({ queryKey: ["prices"] });
@@ -53,10 +57,16 @@ export default function StocksPage() {
         for (const stock of stocks!) {
           if (success + failed > 0) await new Promise(r => setTimeout(r, 2000));
           try {
-            const { error } = await supabase.functions.invoke("fetch-financials", {
-              body: { stock_id: stock.id, ticker: stock.ticker, screener_slug: stock.screener_slug || stock.ticker },
+            const r = await fetch("/api/financials/fetch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                stock_id: stock.id,
+                ticker: stock.ticker,
+                screener_slug: stock.screener_slug || stock.ticker,
+              }),
             });
-            error ? failed++ : success++;
+            r.ok ? success++ : failed++;
           } catch { failed++; }
         }
         queryClient.invalidateQueries({ queryKey: ["financial-metrics"] });
@@ -64,8 +74,13 @@ export default function StocksPage() {
         toast({ title: "Financials refreshed", description: `${success} updated, ${failed} failed` });
 
       } else if (key === "backfill") {
-        const { data, error } = await supabase.functions.invoke("refresh-all-prices", { body: { backfill: true } });
-        if (error) throw error;
+        const r = await fetch("/api/prices/refresh-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backfill: true }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.error ?? `Request failed: ${r.status}`);
         queryClient.invalidateQueries({ queryKey: ["prices"] });
         queryClient.invalidateQueries({ queryKey: ["all-prices"] });
         toast({ title: "3Y Price Backfill Complete", description: data?.message || "Historical prices loaded" });

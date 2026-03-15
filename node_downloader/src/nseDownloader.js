@@ -16,6 +16,7 @@ import {
   REQUEST_DELAY_MS,
 } from "./config.js";
 import { ensureDirSync, readJsonSync, writeJsonSync, sleep } from "./utils.js";
+import { eventDateToResultsQuarter } from "./quarterFromEventDate.js";
 
 // Same categories and logic as Python nse_filing_downloader (earnings + presentation only; concall from Screener)
 const ALLOWED_CATEGORIES = new Set(["earnings_result", "investor_presentation"]);
@@ -42,6 +43,9 @@ function isRelevant(ann) {
   const attText = getAttachmentText(ann);
   const combined = `${desc} ${attText}`.toLowerCase();
 
+  // Keep this list fairly broad so we don't miss genuine
+  // results / presentations, but rely on classifyFiling()
+  // and ALLOWED_CATEGORIES to decide the final category.
   const positiveKeywords = [
     "concall",
     "con call",
@@ -51,11 +55,21 @@ function isRelevant(ann) {
     "transcript",
     "financial results",
     "financial result",
+    "results for the quarter",
+    "results for quarter",
     "quarterly results",
     "quarterly result",
     "annual results",
     "annual result",
+    "outcome of board meeting",
+    "outcome of the board meeting",
+    "outcome of meeting",
+    "board meeting held",
+    "considered and approved the financial",
     "investor presentation",
+    "earnings presentation",
+    "presentation on financial results",
+    "results presentation",
     "presentation",
   ];
   if (!positiveKeywords.some((kw) => combined.includes(kw))) {
@@ -109,20 +123,47 @@ function classifyFiling(ann) {
   return null;
 }
 
-function inferQuarter(sortDate) {
-  if (!sortDate) return "UNKNOWN";
-  const d = dayjs(sortDate);
-  const year = d.year();
-  const month = d.month() + 1; // 1–12
+function inferQuarterForAnnouncement(ann) {
+  const desc = (ann.desc ?? "").toLowerCase();
+  const attText = getAttachmentText(ann).toLowerCase();
+  const combined = `${desc} ${attText}`;
 
-  let fyYear = year + (month >= 4 ? 1 : 0);
-  let q;
-  if (month >= 4 && month <= 6) q = 1;
-  else if (month >= 7 && month <= 9) q = 2;
-  else if (month >= 10 && month <= 12) q = 3;
-  else q = 4;
+  // Patterns like "Q2 FY26" or "Q2FY26"
+  const m1 = combined.match(/q([1-4])\s*fy\s*(\d{2}|\d{4})/i) || combined.match(/q([1-4])fy(\d{2}|\d{4})/i);
+  if (m1) {
+    const qNum = Number(m1[1]);
+    const fy = m1[2].length === 2 ? m1[2] : String(m1[2]).slice(-2);
+    if (qNum >= 1 && qNum <= 4) {
+      return `FY${fy}-Q${qNum}`;
+    }
+  }
 
-  return `FY${String(fyYear).slice(-2)}-Q${q}`;
+  // Patterns like "Quarter 3 FY2026" or "quarter 1 of FY26"
+  const m2 = combined.match(/quarter\s*([1-4])\s*(?:of\s*)?fy\s*(\d{2}|\d{4})/i);
+  if (m2) {
+    const qNum = Number(m2[1]);
+    const fy = m2[2].length === 2 ? m2[2] : String(m2[2]).slice(-2);
+    if (qNum >= 1 && qNum <= 4) {
+      return `FY${fy}-Q${qNum}`;
+    }
+  }
+
+  // "Quarter ended 30 June 2025" / "quarter ended June 30, 2025" → Q1 FY26 (Indian FY)
+  const quarterEnded = combined.match(/quarter\s+ended\s+(?:(\d{1,2})\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:,\s*)?(\d{4})/i);
+  if (quarterEnded) {
+    const monthStr = (quarterEnded[2] || "").toLowerCase();
+    const year = Number(quarterEnded[3]);
+    const monthMap = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    const month = monthMap[monthStr];
+    if (month && year) {
+      const fyYear = month >= 4 ? year + 1 : year;
+      let q = month >= 4 && month <= 6 ? 1 : month >= 7 && month <= 9 ? 2 : month >= 10 && month <= 12 ? 3 : 4;
+      return `FY${String(fyYear).slice(-2)}-Q${q}`;
+    }
+  }
+
+  // Fallback: use shared event-date → results-quarter rule (Jan→Q3, Apr→Q4, Jul→Q1, Oct→Q2).
+  return eventDateToResultsQuarter(ann.sort_date || "");
 }
 
 /**
@@ -163,6 +204,8 @@ async function createNseSession() {
   }
 
   session.defaults.validateStatus = undefined;
+  const hasCookie = !!session.defaults.headers?.common?.Cookie;
+  console.log(`[NSE] Session ready. Cookie present: ${hasCookie}`);
   return session;
 }
 
@@ -170,11 +213,20 @@ async function downloadPdf(session, url, savePath) {
   ensureDirSync(path.dirname(savePath));
   try {
     const res = await session.get(url, { responseType: "arraybuffer" });
-    fs.writeFileSync(savePath, res.data);
-    console.log(`Saved: ${savePath}`);
+    if (res.status !== 200) {
+      console.warn(`[NSE] PDF download HTTP ${res.status}: ${url.slice(0, 80)}...`);
+      return false;
+    }
+    const buf = Buffer.isBuffer(res.data) ? res.data : Buffer.from(res.data);
+    if (buf.length < 100 || buf[0] !== 0x25 || buf[1] !== 0x50) {
+      console.warn(`[NSE] Response not a PDF (size=${buf.length}, magic=${buf.slice(0, 4).toString("ascii")}): ${url.slice(0, 60)}...`);
+      return false;
+    }
+    fs.writeFileSync(savePath, buf);
+    console.log(`[NSE] Saved: ${path.basename(savePath)}`);
     return true;
   } catch (err) {
-    console.error(`Failed to download ${url}: ${err.message}`);
+    console.error(`[NSE] Failed to download PDF: ${err.message}. URL: ${url.slice(0, 80)}...`);
     return false;
   }
 }
@@ -204,59 +256,103 @@ async function fetchAnnouncements(session, symbol, fromStr, toStr) {
     to_date: toStr,
   });
   const url = `https://www.nseindia.com/api/corporate-announcements?${params.toString()}`;
+  console.log(`[NSE] Fetching ${symbol} ${fromStr}..${toStr}: ${url}`);
   const res = await session.get(url);
   if (res.status !== 200) {
+    console.error(`[NSE] API error: status=${res.status} ${res.statusText || ""}`);
     throw new Error(`NSE API returned ${res.status} ${res.statusText || ""}`);
   }
   if (!Array.isArray(res.data)) {
+    console.warn(`[NSE] Response is not an array (type=${typeof res.data}). Raw: ${JSON.stringify(res.data)?.slice(0, 200)}`);
     return [];
+  }
+  const count = res.data.length;
+  console.log(`[NSE] ${symbol} ${fromStr}..${toStr}: API returned ${count} raw announcement(s)`);
+  if (count === 0) {
+    console.warn(`[NSE] No announcements from NSE for ${symbol} in ${fromStr}–${toStr}. Symbol may be delisted, or no filings in this range.`);
   }
   return res.data;
 }
 
-async function processSymbol(session, symbol, fromStr, toStr, downloadLog) {
+async function processSymbol(session, symbol, fromStr, toStr, downloadLog, dataDir) {
+  const baseDir = dataDir || DATA_DIR;
   console.log(
-    `Processing ${symbol} from ${fromStr} to ${toStr} (NSE corporate announcements)...`,
+    `[NSE] Processing ${symbol} from ${fromStr} to ${toStr}...`,
   );
   let downloaded = 0;
   let anns;
   try {
     anns = await fetchAnnouncements(session, symbol, fromStr, toStr);
+    // HBL is a special case: some historical announcements are filed under
+    // HBLENGINE on NSE. If we get *no* announcements for HBL in this window,
+    // try once more with HBLENGINE so we don't silently miss results.
+    if ((!anns || anns.length === 0) && symbol === "HBL") {
+      console.warn(
+        `[NSE] ${symbol} returned 0 announcements. Retrying this window with HBLENGINE (alternate NSE symbol)`,
+      );
+      anns = await fetchAnnouncements(session, "HBLENGINE", fromStr, toStr);
+    }
   } catch (err) {
     console.error(
-      `Error fetching announcements for ${symbol} (${fromStr}–${toStr}): ${err.message}`,
+      `[NSE] Error fetching announcements for ${symbol} (${fromStr}–${toStr}): ${err.message}`,
     );
     return 0;
   }
+
+  let relevant = 0;
+  let classified = 0;
+  let allowed = 0;
+  let skippedNoUrl = 0;
+  let skippedInLog = 0;
+  let skippedDupQuarter = 0;
+  let attempted = 0;
+  let recoveredFromMissing = 0;
 
   const seenQuarterCategory = new Set();
 
   for (const ann of anns) {
     if (!isRelevant(ann)) continue;
+    relevant += 1;
     const category = classifyFiling(ann);
-    if (!category || !ALLOWED_CATEGORIES.has(category)) continue;
+    if (!category) continue;
+    classified += 1;
+    if (!ALLOWED_CATEGORIES.has(category)) {
+      continue; // concall_transcript etc. — we only want earnings_result, investor_presentation
+    }
+    allowed += 1;
 
     const pdfUrl = (ann.attchmntFile ?? "").trim();
     const seqId = ann.seq_id;
-    if (!pdfUrl || !seqId) continue;
-
-    if (downloadLog[seqId]) {
+    if (!pdfUrl || !seqId) {
+      skippedNoUrl += 1;
       continue;
     }
 
+    if (downloadLog[seqId]) {
+      const existingPath = downloadLog[seqId].filename;
+      if (existingPath && fs.existsSync(existingPath)) {
+        skippedInLog += 1;
+        continue;
+      }
+      delete downloadLog[seqId];
+      recoveredFromMissing += 1;
+    }
+
     const sortDate = ann.sort_date || "";
-    const quarter = inferQuarter(sortDate);
+    const quarter = inferQuarterForAnnouncement(ann);
     const key = `${quarter}|${category}`;
     if (seenQuarterCategory.has(key)) {
+      skippedDupQuarter += 1;
       continue;
     }
     seenQuarterCategory.add(key);
 
     const datePart = sortDate ? sortDate.slice(0, 10) : "unknown";
     const filename = `${category}_${datePart}_${seqId}.pdf`;
-    const folder = path.join(DATA_DIR, symbol, quarter);
+    const folder = path.join(baseDir, symbol, quarter);
     const savePath = path.join(folder, filename);
 
+    attempted += 1;
     const ok = await downloadPdf(session, pdfUrl, savePath);
     if (ok) {
       downloadLog[seqId] = {
@@ -274,10 +370,27 @@ async function processSymbol(session, symbol, fromStr, toStr, downloadLog) {
     await sleep(REQUEST_DELAY_MS);
   }
 
+  if (recoveredFromMissing > 0) {
+    console.log(`[NSE] ${symbol}: ${recoveredFromMissing} entry(ies) in log had missing file on disk; will re-download.`);
+  }
+  console.log(
+    `[NSE] ${symbol} ${fromStr}..${toStr}: raw=${anns.length} relevant=${relevant} classified=${classified} allowed=${allowed} ` +
+    `skipNoUrl=${skippedNoUrl} skipInLog=${skippedInLog} skipDupQ=${skippedDupQuarter} attempted=${attempted} downloaded=${downloaded}`,
+  );
+  if (anns.length > 0 && allowed === 0) {
+    const sample = anns.find((a) => isRelevant(a));
+    const cat = sample ? classifyFiling(sample) : "(none)";
+    console.warn(
+      `[NSE] ${symbol}: No announcements passed allowed categories (earnings_result, investor_presentation). ` +
+      `Sample relevant announcement classified as: ${cat}. ` +
+      `Check NSE listing or classification keywords.`,
+    );
+  }
   return downloaded;
 }
 
-async function runHistorical({ symbolFilter, historyWindow }) {
+async function runHistorical({ symbolFilter, historyWindow, dataDir }) {
+  const baseDir = dataDir || DATA_DIR;
   const symbols = symbolFilter ? [symbolFilter.toUpperCase()] : WATCHLIST;
   const historyDays =
     HISTORY_WINDOWS[historyWindow] ?? DEFAULT_HISTORY_DAYS;
@@ -285,20 +398,34 @@ async function runHistorical({ symbolFilter, historyWindow }) {
   const today = dayjs();
   const start = today.subtract(historyDays, "day");
 
+  console.log("[NSE] " + "=".repeat(50));
   console.log(
-    `Historical mode (last ${historyDays} days): ${start.format(
-      "DD-MM-YYYY",
-    )} -> ${today.format("DD-MM-YYYY")}`,
+    `[NSE] Historical mode: last ${historyDays} days (${start.format("DD-MM-YYYY")} -> ${today.format("DD-MM-YYYY")})`,
   );
-  console.log(`Symbols: ${symbols.join(", ")}`);
+  console.log(`[NSE] Data directory: ${baseDir}`);
+  console.log(`[NSE] Symbols: ${symbols.join(", ")}`);
 
-  const downloadLogPath = path.join(DATA_DIR, "download_log.json");
-  const downloadLog = readJsonSync(downloadLogPath, {});
+  const downloadLogPath = path.join(baseDir, "download_log.json");
+  let downloadLog = {};
+  if (fs.existsSync(downloadLogPath)) {
+    try {
+      downloadLog = readJsonSync(downloadLogPath, {});
+      console.log(`[NSE] Loaded download_log.json: ${Object.keys(downloadLog).length} existing entry(ies)`);
+    } catch (e) {
+      console.warn(`[NSE] Could not read download_log.json: ${e.message}`);
+    }
+  } else {
+    ensureDirSync(baseDir);
+    console.log(`[NSE] No existing download_log.json; will create.`);
+  }
+
   const session = await createNseSession();
   let totalNew = 0;
 
   for (const symbol of symbols) {
     let chunkStart = start;
+    let chunks = 0;
+    let symbolNew = 0;
     while (chunkStart.isBefore(today, "day")) {
       const tentativeEnd = chunkStart.add(89, "day");
       const chunkEnd = tentativeEnd.isAfter(today, "day") ? today : tentativeEnd;
@@ -311,21 +438,24 @@ async function runHistorical({ symbolFilter, historyWindow }) {
         fromStr,
         toStr,
         downloadLog,
+        baseDir
       );
+      symbolNew += newly;
       totalNew += newly;
+      chunks += 1;
       writeJsonSync(downloadLogPath, downloadLog);
 
       chunkStart = chunkEnd.add(1, "day");
       await sleep(1000);
     }
+    console.log(`[NSE] ${symbol}: ${chunks} chunk(s), ${symbolNew} new file(s) this run`);
     await sleep(1000);
   }
 
-  console.log("=".repeat(50));
+  console.log("[NSE] " + "=".repeat(50));
   console.log(
-    `Historical download complete (Node). Total new files: ${totalNew}`,
+    `[NSE] Historical download complete. Total new files: ${totalNew}. Log: ${downloadLogPath}`,
   );
-  console.log(`Log saved to: ${downloadLogPath}`);
 }
 
 function parseArgs() {
