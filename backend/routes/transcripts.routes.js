@@ -5,6 +5,7 @@ import {
   uploadToDriveHandler,
   driveStatusHandler,
   resetTranscriptsHandler,
+  resetAllTranscriptsHandler,
   deleteFilingHandler,
   debugSymbolHandler,
   debugScreenerLinksHandler,
@@ -19,5 +20,6 @@ transcriptsRouter.get("/api/transcripts/debug/:symbol", debugSymbolHandler);
 transcriptsRouter.post("/api/transcripts/upload-to-drive", uploadToDriveHandler);
 transcriptsRouter.get("/api/transcripts/drive-status", driveStatusHandler);
 transcriptsRouter.post("/api/transcripts/reset", resetTranscriptsHandler);
+transcriptsRouter.post("/api/transcripts/reset-all", resetAllTranscriptsHandler);
 transcriptsRouter.post("/api/transcripts/delete-file", deleteFilingHandler);
 

@@ -19,6 +19,17 @@ export interface CredibilityDimensions {
   overall: number | null;
 }
 
+/** DB / import metrics may be plain strings or { value, evidence } objects */
+function metricCellToComparableString(val: unknown): string {
+  if (val == null) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "object" && val !== null && "value" in val) {
+    const v = (val as { value: unknown }).value;
+    return v == null ? "" : String(v);
+  }
+  return String(val);
+}
+
 export function detectMultibaggerSignals(
   financials: any[],
   latestAnalysis: any,
@@ -237,9 +248,10 @@ export function detectMultibaggerSignals(
       const currMetrics = (latestSnap.metrics && typeof latestSnap.metrics === "object") ? latestSnap.metrics as Record<string, string> : {};
       const prevMetrics = (prevSnap.metrics && typeof prevSnap.metrics === "object") ? prevSnap.metrics as Record<string, string> : {};
 
-      const extractNum = (val: string): number | null => {
-        if (!val) return null;
-        const match = String(val).match(/([\d,.]+)/);
+      const extractNum = (val: unknown): number | null => {
+        const str = metricCellToComparableString(val);
+        if (!str) return null;
+        const match = String(str).match(/([\d,.]+)/);
         return match ? parseFloat(match[1].replace(/,/g, "")) : null;
       };
 

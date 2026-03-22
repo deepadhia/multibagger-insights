@@ -11,6 +11,7 @@ import https from "node:https";
 import tls from "node:tls";
 import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "./config.js";
+import { getCategoriesPresentInQuarterDir } from "./quarterDirCategories.js";
 import { ensureDirSync, readJsonSync, writeJsonSync, sleep } from "./utils.js";
 import { extractQuarterFromPdf } from "./pdfQuarterParser.js";
 import { eventDateToResultsQuarter } from "./quarterFromEventDate.js";
@@ -38,6 +39,16 @@ const PDF_MAGIC = Buffer.from("%PDF", "ascii");
 function isPdfBuffer(buf) {
   if (!buf || !(buf instanceof Buffer)) return false;
   return buf.length >= 4 && buf.slice(0, 4).equals(PDF_MAGIC);
+}
+
+/**
+ * Screener sometimes lists earnings-call *recordings* (mp3/mp4) instead of a PDF transcript.
+ * We only store PDFs here — skip these early to avoid SSL noise and wasted downloads.
+ */
+function isNonPdfMediaUrl(href) {
+  if (!href || typeof href !== "string") return false;
+  const bare = href.trim().split(/[?#]/)[0].toLowerCase();
+  return /\.(mp3|mp4|m4a|wav|webm|ogg|aac|mov|mkv|flv)$/i.test(bare);
 }
 
 /** If response is HTML (e.g. BSE attachment page), try to find a direct PDF link. Returns first candidate URL or null. */
@@ -261,9 +272,16 @@ async function downloadViaRawTls(url, referer, savePath) {
 }
 
 async function downloadFile(link, folderPath, category) {
+  if (isNonPdfMediaUrl(link.href)) {
+    console.warn(
+      `[Merge] Skipping URL (audio/video, not a PDF transcript): ${String(link.href).slice(0, 120)}`,
+    );
+    return null;
+  }
   ensureDirSync(folderPath);
   const quarter = link.fiscal_quarter;
-  const baseName = `${category}_${quarter}_${dayjs().format("YYYY-MM-DD")}_screener.pdf`;
+  // Include symbol (share), quarter, and category in filename for easier identification on disk
+  const baseName = `${link.symbol}_${quarter}_${category}_${dayjs().format("YYYY-MM-DD")}_screener.pdf`;
   const savePath = path.join(folderPath, baseName);
 
   const isBse = link.href.includes("bseindia.com");
@@ -386,8 +404,8 @@ function removeCorruptedPdfsInFolder(folder, meta) {
   return metaOut;
 }
 
-async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersForSymbol = null) {
-  const folder = path.join(DATA_DIR, symbol, quarter);
+async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersForSymbol = null, dataRoot = DATA_DIR) {
+  const folder = path.join(dataRoot, symbol, quarter);
   ensureDirSync(folder);
 
   const metaPath = path.join(folder, "meta.json");
@@ -397,7 +415,7 @@ async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersF
 
   const allowedSet = allowedQuartersForSymbol instanceof Set ? allowedQuartersForSymbol : null;
 
-  const existingCats = new Set(meta.map((m) => m.category));
+  const existingCats = getCategoriesPresentInQuarterDir(folder, meta);
   let hasEarnings = existingCats.has("earnings_result");
   let hasPpt = existingCats.has("investor_presentation");
   let hasConcall = existingCats.has("concall_transcript");
@@ -422,9 +440,10 @@ async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersF
       const detectedQuarter = await extractQuarterFromPdf(savePath);
       if (detectedQuarter == null || detectedQuarter === expectedQuarter) return true;
       // Mismatch: PDF content is for a different quarter (often Screener link points to old doc).
-      const moveToCorrectQuarter = allowedSet && allowedSet.has(detectedQuarter) && path.dirname(savePath) !== path.join(DATA_DIR, symbol, detectedQuarter);
+      const moveToCorrectQuarter =
+        allowedSet && allowedSet.has(detectedQuarter) && path.dirname(savePath) !== path.join(dataRoot, symbol, detectedQuarter);
       if (moveToCorrectQuarter) {
-        const targetDir = path.join(DATA_DIR, symbol, detectedQuarter);
+        const targetDir = path.join(dataRoot, symbol, detectedQuarter);
         ensureDirSync(targetDir);
         const baseName = path.basename(savePath);
         const newName = baseName.replace(expectedQuarter, detectedQuarter);
@@ -524,7 +543,9 @@ async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersF
   writeJsonSync(metaPath, meta);
 }
 
-export async function runMerge({ window = "3q" } = {}) {
+export async function runMerge({ window = "3q", dataDir } = {}) {
+  const root = dataDir || DATA_DIR;
+
   if (!fs.existsSync(SCREENER_LINKS_PATH)) {
     throw new Error(
       `Missing ${SCREENER_LINKS_PATH}. Run Screener scraper first.`,
@@ -553,9 +574,9 @@ export async function runMerge({ window = "3q" } = {}) {
   // Further restrict: only process quarters that already exist from NSE for that symbol,
   // so Node does not create extra historical quarters that Python never had.
   const existingBySymbol = new Map();
-  if (fs.existsSync(DATA_DIR)) {
-    for (const symbolName of fs.readdirSync(DATA_DIR)) {
-      const symbolDir = path.join(DATA_DIR, symbolName);
+  if (fs.existsSync(root)) {
+    for (const symbolName of fs.readdirSync(root)) {
+      const symbolDir = path.join(root, symbolName);
       if (!fs.statSync(symbolDir).isDirectory()) continue;
       const quarters = new Set();
       for (const q of fs.readdirSync(symbolDir)) {
@@ -570,7 +591,7 @@ export async function runMerge({ window = "3q" } = {}) {
     }
   }
 
-  console.log("Merge data directory:", DATA_DIR);
+  console.log("Merge data directory:", root);
   console.log(
     `Merge: ${links.length} Screener links -> ${bySymbolQuarter.size} symbol-quarter groups (max ${maxQuarters} quarter(s) per symbol)`,
   );
@@ -589,7 +610,7 @@ export async function runMerge({ window = "3q" } = {}) {
     // Process quarter if NSE created it or we have Screener links (create folder and backfill earnings/concall/presentation from Screener)
     if (linksForKey.length === 0) continue;
     console.log(`Merging Screener for ${symbol} ${quarter}...`);
-    await backfillQuarterForSymbol(symbol, quarter, linksForKey, allowedSet ?? undefined);
+    await backfillQuarterForSymbol(symbol, quarter, linksForKey, allowedSet ?? undefined, root);
   }
 
   console.log("Merge complete (Node).");

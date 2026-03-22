@@ -473,13 +473,56 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        {/* ── THESIS DRIFT ALERT ── */}
+        {/* ── THESIS DRIFT ALERT + ACTION VERDICT ── */}
         {(() => {
           const latestSnap = snapshots?.[0] as any;
-          const rawOut = latestSnap?.raw_ai_output as any;
-          const driftStatus = latestSnap?.thesis_drift_status || rawOut?.snapshot?.thesis_drift?.status || null;
+          if (!latestSnap) return null;
+          const rawOut = latestSnap.raw_ai_output as any;
+          const driftStatus = latestSnap.thesis_drift_status || rawOut?.snapshot?.thesis_drift?.status || null;
           const driftReason = rawOut?.snapshot?.thesis_drift?.reason || null;
-          return <ThesisDriftAlert driftStatus={driftStatus} driftReason={driftReason} />;
+          const actionVerdict = rawOut?.actionable_verdict as any;
+          const actionDecision = actionVerdict?.decision ?? null;
+          const actionConviction = actionVerdict?.conviction_level ?? null;
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_minmax(0,1fr)] gap-3 items-start">
+              <ThesisDriftAlert driftStatus={driftStatus} driftReason={driftReason} />
+              {actionDecision && (
+                <Card className="p-3 bg-card border-border card-glow">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                    Actionable Verdict
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <Badge
+                      variant="outline"
+                      className={`font-mono text-[10px] ${
+                        String(actionDecision).includes("BUILD")
+                          ? "text-terminal-green border-terminal-green/40"
+                          : String(actionDecision).includes("CUT")
+                            ? "text-terminal-red border-terminal-red/40"
+                            : "text-terminal-amber border-terminal-amber/40"
+                      }`}
+                    >
+                      {actionDecision}
+                    </Badge>
+                    {actionConviction && (
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px] text-muted-foreground border-muted-foreground/40"
+                      >
+                        {actionConviction}
+                      </Badge>
+                    )}
+                  </div>
+                  {actionVerdict?.action_rationale && (
+                    <p className="text-[11px] text-foreground/80 leading-snug">
+                      {actionVerdict.action_rationale}
+                    </p>
+                  )}
+                </Card>
+              )}
+            </div>
+          );
         })()}
 
         {/* ── THESIS SCORE + MULTIBAGGER SIGNALS ── */}
@@ -1399,6 +1442,23 @@ export default function StockDetailPage() {
                                           >
                                             <ExternalLink className="h-3 w-3 mr-1" /> Open
                                           </Button>
+                                          {f.url && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="font-mono text-xs h-6 ml-1"
+                                              onClick={() => {
+                                                const link = document.createElement("a");
+                                                link.href = f.url;
+                                                link.download = f.filename || undefined;
+                                                document.body.appendChild(link);
+                                                link.click();
+                                                document.body.removeChild(link);
+                                              }}
+                                            >
+                                              Download
+                                            </Button>
+                                          )}
                                           {f.url && (f.drive_web_link || f.drive_file_id) && (
                                             <Button
                                               variant="ghost"

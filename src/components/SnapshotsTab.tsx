@@ -170,6 +170,9 @@ export function SnapshotsTab({ stockId }: Props) {
         const signals = rawOutput?.signals as { bullish?: string[]; warnings?: string[]; bearish?: string[] } | undefined;
         const confidenceScore = snapAny.confidence_score ?? rawOutput?.snapshot?.confidence_score ?? null;
         const thesisMomentum = snapAny.thesis_momentum || rawOutput?.snapshot?.thesis_momentum || null;
+        const actionVerdict = rawOutput?.actionable_verdict as any;
+        const actionDecision = actionVerdict?.decision ?? null;
+        const actionConviction = actionVerdict?.conviction_level ?? null;
 
         return (
           <Collapsible
@@ -213,6 +216,28 @@ export function SnapshotsTab({ stockId }: Props) {
                         "text-terminal-red border-terminal-red/30"
                       }`}>
                         Score: {confidenceScore}
+                      </Badge>
+                    )}
+                    {actionDecision && (
+                      <Badge
+                        variant="outline"
+                        className={`font-mono text-[10px] ${
+                          String(actionDecision).includes("BUILD")
+                            ? "text-terminal-green border-terminal-green/40"
+                            : String(actionDecision).includes("CUT")
+                              ? "text-terminal-red border-terminal-red/40"
+                              : "text-terminal-amber border-terminal-amber/40"
+                        }`}
+                      >
+                        {actionDecision}
+                      </Badge>
+                    )}
+                    {actionConviction && (
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px] text-muted-foreground border-muted-foreground/40"
+                      >
+                        {actionConviction}
                       </Badge>
                     )}
                     {thesisMomentum && (

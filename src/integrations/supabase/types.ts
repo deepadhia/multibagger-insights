@@ -541,6 +541,32 @@ export type Database = {
           },
         ]
       }
+      stock_tracking_profiles: {
+        Row: {
+          stock_id: string
+          config: Json
+          created_at: string
+        }
+        Insert: {
+          stock_id: string
+          config: Json
+          created_at?: string
+        }
+        Update: {
+          stock_id?: string
+          config?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_tracking_profiles_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: true
+            referencedRelation: "stocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stocks: {
         Row: {
           buy_price: number | null

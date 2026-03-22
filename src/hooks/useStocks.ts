@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
 
 export function useStocks() {
   return useQuery({
@@ -8,6 +9,24 @@ export function useStocks() {
       const { data, error } = await supabase.from("stocks").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       return data;
+    },
+  });
+}
+
+export function useSnapshotCounts() {
+  return useQuery({
+    queryKey: ["snapshot-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("quarterly_snapshots")
+        .select("stock_id, count:count(*)")
+        .group("stock_id");
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      (data || []).forEach((row: any) => {
+        map[row.stock_id] = Number(row.count) || 0;
+      });
+      return map;
     },
   });
 }
@@ -109,10 +128,25 @@ export function useQuarterlySnapshots(stockId: string) {
       const { data, error } = await supabase
         .from("quarterly_snapshots")
         .select("*")
-        .eq("stock_id", stockId)
-        .order("created_at", { ascending: false });
+        .eq("stock_id", stockId);
       if (error) throw error;
-      return data;
+      return sortSnapshotsByQuarterDesc(data || []);
+    },
+    enabled: !!stockId,
+  });
+}
+
+export function useStockTrackingProfile(stockId: string) {
+  return useQuery({
+    queryKey: ["stock-tracking-profile", stockId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stock_tracking_profiles")
+        .select("config")
+        .eq("stock_id", stockId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.config as any | null;
     },
     enabled: !!stockId,
   });

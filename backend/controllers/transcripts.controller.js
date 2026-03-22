@@ -2,6 +2,7 @@ import {
   downloadTranscriptsPipeline,
   listDownloadedFilesForSymbol,
   resetTranscriptFilesByPeriod,
+  resetAllTranscriptFiles,
   saveFilingDriveLinks,
   getAlreadyUploadedKeys,
   getSymbolDebugInfo,
@@ -140,6 +141,25 @@ export async function resetTranscriptsHandler(req, res) {
     });
   } catch (err) {
     console.error("transcripts/reset error:", err);
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+  }
+}
+
+/** POST /api/transcripts/reset-all - delete all local + Drive transcript/filing files for all symbols. */
+export async function resetAllTranscriptsHandler(_req, res) {
+  try {
+    const result = await resetAllTranscriptFiles();
+    res.json({
+      ok: true,
+      deleted: result.deleted,
+      deletedFromDrive: result.deletedFromDrive ?? 0,
+      errors: result.errors,
+    });
+  } catch (err) {
+    console.error("transcripts/reset-all error:", err);
     res.status(500).json({
       ok: false,
       error: err instanceof Error ? err.message : "Unknown error",

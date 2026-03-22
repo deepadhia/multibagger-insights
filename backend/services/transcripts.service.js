@@ -6,6 +6,10 @@ import { runScreenerScraper } from "../../node_downloader/src/screenerScraper.js
 import { runMerge } from "../../node_downloader/src/mergeScreenerIntoNse.js";
 import { verifyOutput } from "../../node_downloader/src/verifyDownloads.js";
 import {
+  FILING_CATEGORIES,
+  getCategoriesPresentInQuarterDir,
+} from "../../node_downloader/src/quarterDirCategories.js";
+import {
   getAllTickers,
   getTickersByIds,
   getWatchlistTickers,
@@ -47,7 +51,7 @@ function getExpectedQuarters(window) {
 /** For each symbol, return list of { quarter, missing: string[] } (missing categories: earnings_result, investor_presentation, concall_transcript). */
 function getMissingPerSymbol(dataDir, tickers, window) {
   const expectedQuarters = getExpectedQuarters(window);
-  const required = ["earnings_result", "investor_presentation", "concall_transcript"];
+  const required = FILING_CATEGORIES;
   const result = new Map();
 
   for (const symbol of tickers) {
@@ -55,22 +59,15 @@ function getMissingPerSymbol(dataDir, tickers, window) {
     const missingList = [];
     for (const quarter of expectedQuarters) {
       const quarterDir = path.join(symbolDir, quarter);
-      const existing = new Set();
-      if (fs.existsSync(quarterDir) && fs.statSync(quarterDir).isDirectory()) {
-        const metaPath = path.join(quarterDir, "meta.json");
-        if (fs.existsSync(metaPath)) {
-          try {
-            const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-            if (Array.isArray(meta)) for (const m of meta) if (m.category) existing.add(m.category);
-          } catch (_) {}
-        }
-        for (const name of fs.readdirSync(quarterDir)) {
-          if (!name.toLowerCase().endsWith(".pdf")) continue;
-          if (name.startsWith("earnings_result_")) existing.add("earnings_result");
-          if (name.startsWith("investor_presentation_")) existing.add("investor_presentation");
-          if (name.startsWith("concall_transcript_")) existing.add("concall_transcript");
-        }
+      let metaArr = [];
+      const metaPath = path.join(quarterDir, "meta.json");
+      if (fs.existsSync(metaPath)) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+          if (Array.isArray(meta)) metaArr = meta;
+        } catch (_) {}
       }
+      const existing = getCategoriesPresentInQuarterDir(quarterDir, metaArr);
       const missing = required.filter((c) => !existing.has(c));
       if (missing.length) missingList.push({ quarter, missing });
     }
@@ -559,6 +556,118 @@ export async function resetTranscriptFilesByPeriod(period, symbolFilter = null) 
             deletedFromDrive++;
           } catch (e) {
             errors.push(`Drive (orphan): ${symbol}/${row.quarter}/${row.filename}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  return { deleted, deletedFromDrive, errors: errors.length ? errors : undefined };
+}
+
+/**
+ * Hard reset: delete *all* downloaded transcript/filing PDFs and their Drive copies,
+ * for all symbols and all periods. Also cleans up filing_drive_links rows.
+ * Returns { deleted, deletedFromDrive, errors? }.
+ */
+export async function resetAllTranscriptFiles() {
+  const errors = [];
+  let deleted = 0;
+  let deletedFromDrive = 0;
+  const dataDir = getDataDir();
+
+  if (!fs.existsSync(dataDir) || !fs.statSync(dataDir).isDirectory()) {
+    return { deleted: 0, deletedFromDrive: 0, errors: [] };
+  }
+
+  const symbols = fs.readdirSync(dataDir).filter((name) => {
+    const full = path.join(dataDir, name);
+    return fs.statSync(full).isDirectory() && !["download_log.json", "watcher_state.json"].includes(name);
+  });
+
+  const driveConfigured = isDriveConfigured();
+
+  for (const symbol of symbols) {
+    const symbolDir = path.join(dataDir, symbol);
+    if (!fs.statSync(symbolDir).isDirectory()) continue;
+
+    for (const quarterName of fs.readdirSync(symbolDir)) {
+      const quarterDir = path.join(symbolDir, quarterName);
+      if (!fs.statSync(quarterDir).isDirectory()) continue;
+
+      const entries = fs.readdirSync(quarterDir).filter((f) => f.toLowerCase().endsWith(".pdf"));
+      for (const filename of entries) {
+        const filePath = path.join(quarterDir, filename);
+        try {
+          try {
+            const linkRes = await pool.query(
+              "SELECT drive_file_id FROM filing_drive_links WHERE symbol = $1 AND quarter = $2 AND filename = $3",
+              [symbol, quarterName, filename],
+            );
+            const row = linkRes.rows?.[0];
+            if (row?.drive_file_id && driveConfigured) {
+              await deleteDriveFile(row.drive_file_id);
+              deletedFromDrive++;
+            }
+            await pool.query(
+              "DELETE FROM filing_drive_links WHERE symbol = $1 AND quarter = $2 AND filename = $3",
+              [symbol, quarterName, filename],
+            );
+          } catch (driveErr) {
+            errors.push(
+              `Drive/DB: ${symbol}/${quarterName}/${filename}: ${
+                driveErr instanceof Error ? driveErr.message : String(driveErr)
+              }`,
+            );
+          }
+          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            fs.unlinkSync(filePath);
+            deleted++;
+          }
+        } catch (err) {
+          errors.push(`${symbol}/${quarterName}/${filename}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      // Remove meta.json and empty quarter dir
+      try {
+        const metaPath = path.join(quarterDir, "meta.json");
+        if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
+        const remaining = fs.readdirSync(quarterDir);
+        if (remaining.length === 0) {
+          fs.rmdirSync(quarterDir);
+        }
+      } catch (_) {}
+    }
+
+    // Remove empty symbol dir
+    try {
+      if (fs.readdirSync(symbolDir).length === 0) fs.rmdirSync(symbolDir);
+    } catch (_) {}
+
+    // Also remove any remaining Drive-only links for this symbol
+    if (driveConfigured) {
+      try {
+        const driveOnlyRes = await pool.query(
+          "SELECT quarter, filename, drive_file_id FROM filing_drive_links WHERE symbol = $1",
+          [symbol],
+        );
+        for (const row of driveOnlyRes.rows || []) {
+          try {
+            if (row.drive_file_id) {
+              await deleteDriveFile(row.drive_file_id);
+              deletedFromDrive++;
+            }
+            await pool.query(
+              "DELETE FROM filing_drive_links WHERE symbol = $1 AND quarter = $2 AND filename = $3",
+              [symbol, row.quarter, row.filename],
+            );
+          } catch (e) {
+            errors.push(
+              `Drive (orphan): ${symbol}/${row.quarter}/${row.filename}: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            );
           }
         }
       } catch (_) {}

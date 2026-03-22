@@ -2,6 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useStocks, useAllAnalysis } from "@/hooks/useStocks";
 import { useAllFinancialMetrics, useAllShareholding, useAllSnapshots, useAllPromises, useAllCommitments } from "@/hooks/usePortfolioData";
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus, type Signal, type ThesisStatus } from "@/lib/signals";
+import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -147,7 +148,9 @@ const Index = () => {
     return stocks.map(stock => {
       const financials = (allFinancials || []).filter(f => f.stock_id === stock.id);
       const shareholding = (allShareholding || []).filter(s => s.stock_id === stock.id);
-      const snapshots = (allSnapshots || []).filter(s => s.stock_id === stock.id);
+      const snapshots = sortSnapshotsByQuarterDesc(
+        (allSnapshots || []).filter(s => s.stock_id === stock.id)
+      );
       const promises = (allPromises || []).filter(p => p.stock_id === stock.id);
       const commitments = (allCommitments || []).filter(c => c.stock_id === stock.id);
       const stockAnalyses = (analyses || []).filter(a => (a as any).stock_id === stock.id);

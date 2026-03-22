@@ -17,6 +17,7 @@ import {
 } from "./config.js";
 import { ensureDirSync, readJsonSync, writeJsonSync, sleep } from "./utils.js";
 import { eventDateToResultsQuarter } from "./quarterFromEventDate.js";
+import { quarterDirHasCategory } from "./quarterDirCategories.js";
 
 // Same categories and logic as Python nse_filing_downloader (earnings + presentation only; concall from Screener)
 const ALLOWED_CATEGORIES = new Set(["earnings_result", "investor_presentation"]);
@@ -84,6 +85,19 @@ function isRelevant(ann) {
     "intimation regarding investor meet",
     "intimation regarding analysts/ institutional investors meet",
     "invitation to investor meet",
+    // Newspaper / statutory publication ads — not the actual results PDF (common on NSE, e.g. Lumax)
+    "newspaper",
+    "newspaper advertisement",
+    "advertisement for publication",
+    "advertisement for financial",
+    "advertisement of financial",
+    "publication of financial results in newspaper",
+    "publication of results in newspaper",
+    "publication in newspaper",
+    "submission of newspaper",
+    "published in newspaper",
+    "pursuant to regulation 47", // SEBI newspaper publication requirement
+    "regulation 47 of sebi",
   ];
   if (negativeSnippets.some((bad) => combined.includes(bad))) {
     return false;
@@ -96,9 +110,32 @@ function isRelevant(ann) {
  * Same classification as Python classify_filing(); we only use
  * earnings_result and investor_presentation (concall comes from Screener).
  */
+/** True if NSE text is a newspaper-ad / publication notice, not substantive results/presentation. */
+function isNewspaperOrPublicationAd(text) {
+  const t = text.toLowerCase();
+  return [
+    "newspaper",
+    "newspaper advertisement",
+    "advertisement for publication",
+    "advertisement for financial",
+    "advertisement of financial",
+    "publication of financial results in newspaper",
+    "publication of results in newspaper",
+    "publication in newspaper",
+    "submission of newspaper",
+    "published in newspaper",
+    "pursuant to regulation 47",
+    "regulation 47 of sebi",
+  ].some((x) => t.includes(x));
+}
+
 function classifyFiling(ann) {
   const desc = (ann.desc ?? "").toLowerCase();
   const text = `${desc} ${getAttachmentText(ann).toLowerCase()}`;
+
+  if (isNewspaperOrPublicationAd(text)) {
+    return null;
+  }
 
   if (
     ["transcript", "concall", "con call", "conference call", "earnings call"].some(
@@ -305,6 +342,7 @@ async function processSymbol(session, symbol, fromStr, toStr, downloadLog, dataD
   let skippedNoUrl = 0;
   let skippedInLog = 0;
   let skippedDupQuarter = 0;
+  let skippedAlreadyOnDisk = 0;
   let attempted = 0;
   let recoveredFromMissing = 0;
 
@@ -345,11 +383,19 @@ async function processSymbol(session, symbol, fromStr, toStr, downloadLog, dataD
       skippedDupQuarter += 1;
       continue;
     }
+
+    const quarterFolder = path.join(baseDir, symbol, quarter);
+    if (quarterDirHasCategory(quarterFolder, category)) {
+      skippedAlreadyOnDisk += 1;
+      seenQuarterCategory.add(key);
+      continue;
+    }
     seenQuarterCategory.add(key);
 
     const datePart = sortDate ? sortDate.slice(0, 10) : "unknown";
-    const filename = `${category}_${datePart}_${seqId}.pdf`;
-    const folder = path.join(baseDir, symbol, quarter);
+    // Include symbol (share), quarter, and category in filename for easier identification on disk
+    const filename = `${symbol}_${quarter}_${category}_${datePart}_${seqId}.pdf`;
+    const folder = quarterFolder;
     const savePath = path.join(folder, filename);
 
     attempted += 1;
@@ -375,7 +421,7 @@ async function processSymbol(session, symbol, fromStr, toStr, downloadLog, dataD
   }
   console.log(
     `[NSE] ${symbol} ${fromStr}..${toStr}: raw=${anns.length} relevant=${relevant} classified=${classified} allowed=${allowed} ` +
-    `skipNoUrl=${skippedNoUrl} skipInLog=${skippedInLog} skipDupQ=${skippedDupQuarter} attempted=${attempted} downloaded=${downloaded}`,
+      `skipNoUrl=${skippedNoUrl} skipInLog=${skippedInLog} skipDupQ=${skippedDupQuarter} skipOnDisk=${skippedAlreadyOnDisk} attempted=${attempted} downloaded=${downloaded}`,
   );
   if (anns.length > 0 && allowed === 0) {
     const sample = anns.find((a) => isRelevant(a));

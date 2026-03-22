@@ -34,6 +34,27 @@ export async function resetInsightsForStock(stockId) {
   }
 }
 
+/**
+ * Global reset for AI JSON outputs:
+ * - Deletes all quarterly_snapshots rows
+ * - Deletes all management_promises rows
+ * Leaves stocks (and tracking profiles) intact.
+ */
+export async function resetAllJsonOutputs() {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM management_promises");
+    await client.query("DELETE FROM quarterly_snapshots");
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getTickersByIds(ids) {
   if (!Array.isArray(ids) || ids.length === 0) return [];
   const result = await pool.query(

@@ -14,7 +14,7 @@ interface Props {
   ticker: string;
 }
 
-// V5 response format
+// V5/V4 response format (current)
 interface GeminiV5Response {
   ticker?: string;
   quarter: string;
@@ -24,7 +24,8 @@ interface GeminiV5Response {
     thesis_status: "strengthening" | "stable" | "weakening" | "broken";
     thesis_momentum?: "improving" | "stable" | "deteriorating";
     thesis_drift?: {
-      status: "none" | "emerging" | "confirmed";
+      // Support older "emerging|confirmed" and newer "evolving|confirmed_break"
+      status: "none" | "emerging" | "confirmed" | "evolving" | "confirmed_break";
       reason?: string;
     };
     confidence_score: number;
@@ -37,8 +38,16 @@ interface GeminiV5Response {
     bearish?: string[];
   };
   management_analysis?: {
+    // Newer V4-style field name
+    dodged_questions_or_omissions?: string[];
+    // Older name kept for backwards compatibility
     dodged_questions?: string[];
     red_flags?: string[];
+  };
+  actionable_verdict?: {
+    decision: string;
+    conviction_level: string;
+    action_rationale: string;
   };
   promise_updates?: {
     id: string;
@@ -93,6 +102,9 @@ interface NormalizedData {
   key_changes: string[];
   promise_updates: { id: string; new_status: string; resolved_in_quarter: string | null; evidence?: string }[];
   new_promises: { promise_text: string; made_in_quarter: string; target_deadline: string | null; confidence?: string }[];
+  action_decision: string | null;
+  action_conviction: string | null;
+  action_rationale: string | null;
   raw: unknown;
 }
 
@@ -103,18 +115,30 @@ function isV5(data: any): data is GeminiV5Response {
 function normalize(data: any, fallbackQuarter: string): NormalizedData {
   if (isV5(data)) {
     const v = data as GeminiV5Response;
+    const management = v.management_analysis || {};
+    const driftStatus = v.snapshot.thesis_drift?.status || null;
+    const mappedDriftStatus =
+      driftStatus === "confirmed_break"
+        ? "confirmed_break"
+        : driftStatus === "evolving"
+          ? "evolving"
+          : driftStatus;
+
     return {
       quarter: v.quarter || fallbackQuarter,
       summary: v.snapshot.summary,
       thesis_status: v.snapshot.thesis_status,
       thesis_status_reason: v.snapshot.key_changes_vs_last_quarter?.join("; ") || v.snapshot.thesis_drift?.reason || null,
       thesis_momentum: v.snapshot.thesis_momentum || null,
-      thesis_drift_status: v.snapshot.thesis_drift?.status || null,
+      thesis_drift_status: mappedDriftStatus,
       thesis_drift_reason: v.snapshot.thesis_drift?.reason || null,
       confidence_score: v.snapshot.confidence_score,
       management_tone: v.snapshot.management_tone,
-      dodged_questions: v.management_analysis?.dodged_questions || [],
-      red_flags: v.management_analysis?.red_flags || [],
+      dodged_questions:
+        management.dodged_questions_or_omissions ||
+        management.dodged_questions ||
+        [],
+      red_flags: management.red_flags || [],
       metrics: v.metrics,
       signals: v.signals ? {
         bullish: v.signals.bullish || [],
@@ -134,6 +158,9 @@ function normalize(data: any, fallbackQuarter: string): NormalizedData {
         target_deadline: p.target_deadline || null,
         confidence: p.confidence,
       })),
+      action_decision: v.actionable_verdict?.decision || null,
+      action_conviction: v.actionable_verdict?.conviction_level || null,
+      action_rationale: v.actionable_verdict?.action_rationale || null,
       raw: data,
     };
   }
@@ -165,6 +192,9 @@ function normalize(data: any, fallbackQuarter: string): NormalizedData {
       made_in_quarter: p.made_in_quarter || fallbackQuarter,
       target_deadline: p.target_deadline || null,
     })),
+    action_decision: null,
+    action_conviction: null,
+    action_rationale: null,
     raw: data,
   };
 }
@@ -266,76 +296,19 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
     setCommitting(true);
 
     try {
-      // 1. Upsert quarterly snapshot
-      const { error: snapErr } = await supabase
-        .from("quarterly_snapshots")
-        .upsert({
+      // Zero-trust: persist via backend which validates with Zod and enforces "pending UUID sandbox".
+      const r = await fetch("/api/gemini/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           stock_id: stockId,
           quarter: effectiveQuarter,
-          summary: parsed.summary,
-          dodged_questions: parsed.dodged_questions,
-          red_flags: parsed.red_flags,
-          metrics: parsed.metrics as any,
-          raw_ai_output: parsed.raw as any,
-          thesis_status: parsed.thesis_status,
-          thesis_status_reason: parsed.thesis_status_reason,
-        } as any, { onConflict: "stock_id,quarter" });
-
-      if (snapErr) throw snapErr;
-
-      // 1b. Update V5 columns separately (they may not be in types yet)
-      if (parsed.thesis_momentum || parsed.thesis_drift_status || parsed.confidence_score != null) {
-        await supabase
-          .from("quarterly_snapshots")
-          .update({
-            thesis_momentum: parsed.thesis_momentum,
-            thesis_drift_status: parsed.thesis_drift_status,
-            confidence_score: parsed.confidence_score,
-          } as any)
-          .eq("stock_id", stockId)
-          .eq("quarter", effectiveQuarter);
-      }
-
-      // 2. Update existing promises
-      let updatedCount = 0;
-      for (const pu of parsed.promise_updates) {
-        if (!pu.id || pu.new_status === "pending") continue;
-        const { error } = await supabase
-          .from("management_promises")
-          .update({
-            status: pu.new_status,
-            resolved_in_quarter: pu.resolved_in_quarter || effectiveQuarter,
-          })
-          .eq("id", pu.id);
-        if (!error) updatedCount++;
-      }
-
-      // 3. Insert new promises (deduplicate)
-      let insertedCount = 0;
-      if (parsed.new_promises.length > 0) {
-        const { data: existingPromises } = await supabase
-          .from("management_promises")
-          .select("promise_text, made_in_quarter")
-          .eq("stock_id", stockId);
-
-        const existingSet = new Set(
-          (existingPromises || []).map(p => `${p.promise_text}::${p.made_in_quarter}`)
-        );
-
-        const newRows = parsed.new_promises
-          .map(np => ({
-            stock_id: stockId,
-            promise_text: np.promise_text,
-            made_in_quarter: np.made_in_quarter || effectiveQuarter,
-            target_deadline: np.target_deadline || null,
-            status: "pending",
-          }))
-          .filter(row => !existingSet.has(`${row.promise_text}::${row.made_in_quarter}`));
-
-        if (newRows.length > 0) {
-          const { error } = await supabase.from("management_promises").insert(newRows);
-          if (!error) insertedCount = newRows.length;
-        }
+          payload: parsed,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.ok) {
+        throw new Error(data?.error || `Request failed: ${r.status}`);
       }
 
       queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
@@ -343,7 +316,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
 
       toast({
         title: "Committed to database",
-        description: `Snapshot: ${effectiveQuarter} | ${updatedCount} promises resolved | ${insertedCount} new promises added`,
+        description: `Snapshot: ${effectiveQuarter} | ${data.updatedCount ?? 0} promises updated | ${data.insertedCount ?? 0} new promises added.`,
       });
 
       setOpen(false);
@@ -422,6 +395,12 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
                 setCommitting(true);
                 try {
                   await supabase.from("quarterly_snapshots").delete().eq("stock_id", stockId).eq("quarter", effectiveQuarter);
+                  // Revert any promises resolved in this quarter back to pending so ledger state stays consistent.
+                  await supabase
+                    .from("management_promises")
+                    .update({ status: "pending", resolved_in_quarter: null })
+                    .eq("stock_id", stockId)
+                    .eq("resolved_in_quarter", effectiveQuarter);
                   await supabase.from("management_promises").delete().eq("stock_id", stockId).eq("made_in_quarter", effectiveQuarter);
                   queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
                   queryClient.invalidateQueries({ queryKey: ["management-promises", stockId] });
@@ -459,12 +438,16 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
             </div>
 
             <div className="space-y-2 font-mono text-xs">
-              {parsed.thesis_status && (
+              {(parsed.thesis_status || parsed.action_decision) && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-muted-foreground">Thesis:</span>
-                  <Badge variant="outline" className={`text-[10px] ${thesisStatusColor(parsed.thesis_status)}`}>
-                    {parsed.thesis_status.toUpperCase()}
-                  </Badge>
+                  {parsed.thesis_status && (
+                    <>
+                      <span className="text-muted-foreground">Thesis:</span>
+                      <Badge variant="outline" className={`text-[10px] ${thesisStatusColor(parsed.thesis_status)}`}>
+                        {parsed.thesis_status.toUpperCase()}
+                      </Badge>
+                    </>
+                  )}
                   {parsed.thesis_momentum && (
                     <Badge variant="outline" className={`text-[10px] ${
                       parsed.thesis_momentum === "improving" ? "text-terminal-green border-terminal-green/30" :
@@ -481,6 +464,23 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
                       parsed.confidence_score >= 40 ? "text-terminal-amber" :
                       "text-terminal-red"
                     }`}>Score: {parsed.confidence_score}</span>
+                  )}
+                  {parsed.action_decision && (
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${
+                        parsed.action_decision.includes("BUILD") ? "text-terminal-green border-terminal-green/40" :
+                        parsed.action_decision.includes("CUT") ? "text-terminal-red border-terminal-red/40" :
+                        "text-terminal-amber border-terminal-amber/40"
+                      }`}
+                    >
+                      {parsed.action_decision}
+                    </Badge>
+                  )}
+                  {parsed.action_conviction && (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/40">
+                      {parsed.action_conviction}
+                    </Badge>
                   )}
                 </div>
               )}

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useStocks } from "@/hooks/useStocks";
+import { useSnapshotCounts, useStocks } from "@/hooks/useStocks";
 import { AddStockDialog } from "@/components/AddStockDialog";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { Card } from "@/components/ui/card";
@@ -20,10 +20,13 @@ import {
 
 export default function StocksPage() {
   const { data: stocks, isLoading } = useStocks();
+  const { data: snapshotCounts } = useSnapshotCounts();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [resettingDocs, setResettingDocs] = useState(false);
+  const [resettingJson, setResettingJson] = useState(false);
 
   const refreshActions = [
     { key: "prices", label: "Refresh Prices" },
@@ -132,6 +135,16 @@ export default function StocksPage() {
     }
   };
 
+  const sortedStocks = useMemo(() => {
+    if (!stocks) return [];
+    const counts = snapshotCounts || {};
+    return [...stocks].sort((a: any, b: any) => {
+      const ca = counts[a.id] || 0;
+      const cb = counts[b.id] || 0;
+      return cb - ca;
+    });
+  }, [stocks, snapshotCounts]);
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -173,6 +186,83 @@ export default function StocksPage() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button
+              variant="outline"
+              size="sm"
+              className="font-mono text-xs border-terminal-red/40 text-terminal-red hover:bg-terminal-red/10"
+              disabled={resettingDocs}
+              onClick={async () => {
+                if (resettingDocs) return;
+                const confirmReset = window.confirm(
+                  "This will delete ALL downloaded filings (local PDFs) and their Google Drive copies for all stocks. This cannot be undone. Continue?",
+                );
+                if (!confirmReset) return;
+                setResettingDocs(true);
+                try {
+                  const r = await fetch("/api/transcripts/reset-all", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                  });
+                  const data = await r.json().catch(() => ({}));
+                  if (!r.ok || !data?.ok) {
+                    throw new Error(data?.error || `Reset failed: ${r.status}`);
+                  }
+                  toast({
+                    title: "All documents reset",
+                    description: `Deleted ${data.deleted ?? 0} local file(s) and ${data.deletedFromDrive ?? 0} from Drive.`,
+                  });
+                } catch (e: any) {
+                  toast({
+                    title: "Reset documents failed",
+                    description: e?.message ?? "Unknown error",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setResettingDocs(false);
+                }
+              }}
+            >
+              {resettingDocs ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Reset documents
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="font-mono text-xs border-terminal-amber/40 text-terminal-amber hover:bg-terminal-amber/10"
+              disabled={resettingJson}
+              onClick={async () => {
+                if (resettingJson) return;
+                const confirmReset = window.confirm(
+                  "This will reset all AI JSON outputs (quarterly snapshots + promise ledger) for all stocks. This cannot be undone. Continue?",
+                );
+                if (!confirmReset) return;
+                setResettingJson(true);
+                try {
+                  const r = await fetch("/api/stocks/reset-all-json", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                  });
+                  const data = await r.json().catch(() => ({}));
+                  if (!r.ok || !data?.ok) throw new Error(data?.error || `Reset failed: ${r.status}`);
+                  queryClient.invalidateQueries({ queryKey: ["snapshot-counts"] });
+                  toast({
+                    title: "AI JSON reset complete",
+                    description: "Cleared quarterly_snapshots and management_promises for all stocks.",
+                  });
+                } catch (e: any) {
+                  toast({
+                    title: "Reset JSON failed",
+                    description: e?.message ?? "Unknown error",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setResettingJson(false);
+                }
+              }}
+            >
+              {resettingJson ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Reset JSON (AI)
+            </Button>
             <AddStockDialog />
           </div>
         </div>
@@ -198,7 +288,7 @@ export default function StocksPage() {
                 ) : !stocks?.length ? (
                   <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
                 ) : (
-                  stocks.map((stock) => {
+                  sortedStocks.map((stock) => {
                     const analysis = latestAnalysis?.[stock.id];
                     return (
                       <tr

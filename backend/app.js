@@ -7,6 +7,7 @@ import { proxyRouter } from "./routes/proxy.routes.js";
 import { priceRouter } from "./routes/price.routes.js";
 import { financialsRouter } from "./routes/financials.routes.js";
 import authRouter from "./routes/auth.routes.js";
+import { geminiRouter } from "./routes/gemini.routes.js";
 
 export const app = express();
 
@@ -23,4 +24,5 @@ app.use(priceRouter);
 app.use(financialsRouter);
 app.use(stocksRouter);
 app.use(transcriptsRouter);
+app.use(geminiRouter);
 

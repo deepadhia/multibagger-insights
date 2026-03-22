@@ -10,6 +10,7 @@ import {
   TrendingUp, TrendingDown, AlertTriangle, Shield, Target,
   CheckCircle, XCircle, ArrowRight, Zap, FileText
 } from "lucide-react";
+import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
 
 function useAllSnapshots() {
   return useQuery({
@@ -71,7 +72,7 @@ export default function SignalsPage() {
   });
 
   for (const [stockId, data] of stockMap) {
-    const snaps = data.snapshots;
+    const snaps = sortSnapshotsByQuarterDesc(data.snapshots);
     const proms = data.promises;
     const stock = (snaps[0] as any)?.stocks || (proms[0] as any)?.stocks || {};
     const ticker = stock.ticker || "???";
