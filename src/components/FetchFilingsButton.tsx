@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WINDOW_OPTIONS = [
   { value: "3q", label: "3 quarters" },
@@ -27,7 +28,7 @@ export function FetchFilingsButton() {
     if (fetching) return;
     setFetching(true);
     try {
-      const response = await fetch("/api/transcripts/download", {
+      const response = await apiFetch("/api/transcripts/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

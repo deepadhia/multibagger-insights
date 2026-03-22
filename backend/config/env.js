@@ -13,6 +13,9 @@ dotenv.config({ path: path.join(repoRoot, ".env") });
 export const DATABASE_URL = process.env.DATABASE_URL || "";
 export const PORT = Number(process.env.PORT || 4000);
 
+/** Required for admin login JWT signing (set in .env.local, e.g. openssl rand -hex 32). */
+export const JWT_SECRET = (process.env.JWT_SECRET || "").trim();
+
 /** Supabase project URL and anon key for proxying Edge Functions (fetch-price, fetch-financials). */
 export const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
 export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
@@ -20,6 +23,11 @@ export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VI
 if (!DATABASE_URL) {
   // Backend cannot function without a DB; fail fast
   console.error("DATABASE_URL is not set. Add it to .env.local or your environment.");
+  process.exit(1);
+}
+
+if (!JWT_SECRET) {
+  console.error("JWT_SECRET is not set. Add it to .env.local (e.g. openssl rand -hex 32) for admin login.");
   process.exit(1);
 }
 

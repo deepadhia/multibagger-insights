@@ -55,6 +55,36 @@ VITE_SUPABASE_PUBLISHABLE_KEY=<anon_key_from_supabase_start>
 
 You can use `.env.example` as a reference template for required variables.
 
+### 3.0 Admin login (Express + UI)
+
+The React app and Express API are gated behind a single admin account (JWT in an httpOnly cookie).
+
+1. Add to `.env.local` (same file as `DATABASE_URL`):
+
+   ```env
+   JWT_SECRET=<output of: openssl rand -hex 32>
+   ```
+
+2. Apply DB migrations (includes `app_admin_users`):
+
+   ```sh
+   npm run db:migrate
+   ```
+
+3. Set a strong password and seed the admin user (default username `admin`):
+
+   ```env
+   ADMIN_SEED_PASSWORD=your_secure_password_at_least_8_chars
+   ```
+
+   ```sh
+   npm run db:seed:admin
+   ```
+
+4. Start the backend (`npm run server`) and frontend (`npm run dev`), then open `/login`.
+
+**Note:** This protects the **Express** API and downloaded **files** under `/files`. The Supabase client in the browser still uses the public anon key; for stronger data isolation you would add Supabase Auth + RLS separately.
+
 ### 3.1 Connect Your Own Supabase Project (Cloud)
 
 If you want to use your **own** hosted Supabase project instead of the default Lovable one:

@@ -29,6 +29,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch, apiUrl } from "@/lib/apiFetch";
 import {
   RefreshCw, Loader2, DollarSign, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Target, AlertTriangle, Zap, Quote,
@@ -66,7 +67,7 @@ export default function StockDetailPage() {
   const { data: filingsData, isLoading: filingsLoading, refetch: refetchFilings } = useQuery({
     queryKey: ["transcripts-files", stock?.ticker],
     queryFn: async () => {
-      const r = await fetch(`/api/transcripts/files/${encodeURIComponent(stock!.ticker)}`);
+      const r = await apiFetch(`/api/transcripts/files/${encodeURIComponent(stock!.ticker)}`);
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
@@ -74,11 +75,10 @@ export default function StockDetailPage() {
   });
   const filings = (filingsData?.ok && Array.isArray(filingsData.files)) ? filingsData.files : [];
 
-  const apiBase = (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? "";
   const { data: driveStatusData } = useQuery({
     queryKey: ["transcripts-drive-status"],
     queryFn: async () => {
-      const r = await fetch(`${apiBase}/api/transcripts/drive-status`);
+      const r = await apiFetch(apiUrl("/api/transcripts/drive-status"));
       if (!r.ok) throw new Error(`Drive status: ${r.status}`);
       const data = await r.json();
       return { driveConfigured: data?.driveConfigured === true, needsConnect: data?.needsConnect === true };
@@ -98,7 +98,7 @@ export default function StockDetailPage() {
     if (!stock) return;
     setFetchingFinancials(true);
     try {
-      const r = await fetch("/api/financials/fetch", {
+      const r = await apiFetch("/api/financials/fetch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -132,7 +132,7 @@ export default function StockDetailPage() {
     if (!stock) return;
     setFetchingPrice(true);
     try {
-      const r = await fetch("/api/prices/fetch", {
+      const r = await apiFetch("/api/prices/fetch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker: stock.ticker }),
@@ -164,7 +164,7 @@ export default function StockDetailPage() {
     if (resettingInsights) return;
     setResettingInsights(true);
     try {
-      const response = await fetch(`/api/stocks/${stock.id}/reset-insights`, {
+      const response = await apiFetch(`/api/stocks/${stock.id}/reset-insights`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -203,7 +203,7 @@ export default function StockDetailPage() {
     if (resettingFiles) return;
     setResettingFiles(true);
     try {
-      const r = await fetch("/api/transcripts/reset", {
+      const r = await apiFetch("/api/transcripts/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ period, symbol: stock.ticker }),
@@ -238,7 +238,7 @@ export default function StockDetailPage() {
     setUploadingToDrive(true);
     setLastUploadErrors(null);
     try {
-      const r = await fetch("/api/transcripts/upload-to-drive", {
+      const r = await apiFetch("/api/transcripts/upload-to-drive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol: stock.ticker }),
@@ -284,7 +284,7 @@ export default function StockDetailPage() {
     const key = `${quarter}-${filename}`;
     setDeletingFileKey(key);
     try {
-      const r = await fetch("/api/transcripts/delete-file", {
+      const r = await apiFetch("/api/transcripts/delete-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol: stock.ticker, quarter, filename }),
@@ -594,8 +594,9 @@ export default function StockDetailPage() {
         </div>
 
         {/* ── MAIN TABBED CONTENT ── */}
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto">
+        <Tabs defaultValue="overview" className="w-full min-w-0">
+          <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] rounded-md [scrollbar-width:thin]">
+            <TabsList className="bg-card border border-border inline-flex w-max min-w-full flex-nowrap justify-start gap-0.5 h-auto min-h-10 p-1 [&>*]:shrink-0">
             <TabsTrigger value="overview" className="font-mono text-xs gap-1.5">
               <BarChart3 className="h-3 w-3" /> Overview
             </TabsTrigger>
@@ -625,7 +626,8 @@ export default function StockDetailPage() {
             <TabsTrigger value="announcements" className="font-mono text-xs gap-1.5">
               <FileText className="h-3 w-3" /> Announcements
             </TabsTrigger>
-          </TabsList>
+            </TabsList>
+          </div>
 
           {/* ═══ OVERVIEW TAB ═══ */}
           <TabsContent value="overview" className="space-y-4 mt-4">
@@ -1204,17 +1206,17 @@ export default function StockDetailPage() {
 
           {/* ═══ ANNOUNCEMENTS TAB ═══ */}
           <TabsContent value="announcements" className="space-y-4 mt-4">
-            <Card className="p-4 bg-card border-border card-glow">
-              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <Card className="p-4 bg-card border-border card-glow min-w-0 overflow-hidden">
+              <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-start sm:justify-between">
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground min-w-0">
                   Downloaded filings — earnings, concall transcripts, investor presentations
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end sm:max-w-none">
                   {(!driveConfigured || needsConnect) && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="font-mono text-xs"
+                      className="font-mono text-xs shrink-0"
                       onClick={() => { window.location.href = "/api/auth/drive/start"; }}
                     >
                       <ExternalLink className="h-3 w-3 mr-1" />
@@ -1229,7 +1231,7 @@ export default function StockDetailPage() {
                           size="sm"
                           onClick={handleUploadToDrive}
                           disabled={uploadingToDrive}
-                          className="font-mono text-xs"
+                          className="font-mono text-xs shrink-0"
                         >
                           {uploadingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
                           <span className="ml-1">Upload to Drive</span>
@@ -1241,7 +1243,7 @@ export default function StockDetailPage() {
                           size="sm"
                           onClick={handleUploadToDrive}
                           disabled={uploadingToDrive}
-                          className="font-mono text-xs border-terminal-amber/50 text-terminal-amber hover:bg-terminal-amber/10"
+                          className="font-mono text-xs border-terminal-amber/50 text-terminal-amber hover:bg-terminal-amber/10 shrink-0"
                         >
                           {uploadingToDrive ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                           <span className="ml-1">Retry failed ({lastUploadErrors.length})</span>
@@ -1257,7 +1259,7 @@ export default function StockDetailPage() {
                       if (!stock?.ticker) return;
                       setFetchingFilingsForStock(true);
                       try {
-                        const r = await fetch("/api/transcripts/download", {
+                        const r = await apiFetch("/api/transcripts/download", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
@@ -1289,7 +1291,7 @@ export default function StockDetailPage() {
                         setFetchingFilingsForStock(false);
                       }
                     }}
-                    className="font-mono text-xs"
+                    className="font-mono text-xs shrink-0"
                   >
                     {fetchingFilingsForStock ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
                     <span className="ml-1">Fetch for this stock</span>
@@ -1312,25 +1314,27 @@ export default function StockDetailPage() {
                         toast({ title: "Refresh failed", description: String(result.error), variant: "destructive" });
                       }
                     }}
-                    className="font-mono text-xs"
+                    className="font-mono text-xs shrink-0"
                   >
                     {filingsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                     <span className="ml-1">Refresh</span>
                   </Button>
-                  <span className="font-mono text-[10px] text-muted-foreground mx-1">Reset:</span>
-                  {(["3m", "6m", "1y"] as const).map((p) => (
-                    <Button
-                      key={p}
-                      variant="outline"
-                      size="sm"
-                      disabled={resettingFiles || filings.length === 0}
-                      onClick={() => handleResetFiles(p)}
-                      className="font-mono text-[10px] border-terminal-red/40 text-terminal-red hover:bg-terminal-red/10"
-                    >
-                      {resettingFiles ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-                      {p === "3m" ? "3 mo" : p === "6m" ? "6 mo" : "1 yr"}
-                    </Button>
-                  ))}
+                  <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                    <span className="font-mono text-[10px] text-muted-foreground shrink-0">Reset:</span>
+                    {(["3m", "6m", "1y"] as const).map((p) => (
+                      <Button
+                        key={p}
+                        variant="outline"
+                        size="sm"
+                        disabled={resettingFiles || filings.length === 0}
+                        onClick={() => handleResetFiles(p)}
+                        className="font-mono text-[10px] border-terminal-red/40 text-terminal-red hover:bg-terminal-red/10 shrink-0"
+                      >
+                        {resettingFiles ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                        {p === "3m" ? "3 mo" : p === "6m" ? "6 mo" : "1 yr"}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
               {filingsLoading ? (
@@ -1399,20 +1403,21 @@ export default function StockDetailPage() {
                           });
                           return (
                             <AccordionItem key={q} value={q}>
-                              <AccordionTrigger className="font-mono text-sm hover:no-underline">
+                              <AccordionTrigger className="font-mono text-sm hover:no-underline min-w-0 text-left [&>svg]:shrink-0">
                                 {q}
                                 <span className="ml-2 text-muted-foreground font-normal">
                                   ({items.length} file{items.length !== 1 ? "s" : ""})
                                 </span>
                               </AccordionTrigger>
                               <AccordionContent>
-                                <table className="w-full text-sm">
+                                <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] -mx-1 px-1 sm:mx-0 sm:px-0">
+                                <table className="w-full min-w-[520px] text-sm">
                                   <thead>
                                     <tr className="border-b border-border/50">
-                                      <th className="text-left py-1.5 pr-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider">Category</th>
-                                      <th className="text-left py-1.5 pr-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider">Name</th>
-                                      <th className="text-left py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Date</th>
-                                      <th className="text-right py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Actions</th>
+                                      <th className="text-left py-1.5 pr-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider whitespace-nowrap">Category</th>
+                                      <th className="text-left py-1.5 pr-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider min-w-[120px]">Name</th>
+                                      <th className="text-left py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">Date</th>
+                                      <th className="text-right py-1.5 pl-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">Actions</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1487,6 +1492,7 @@ export default function StockDetailPage() {
                                     ))}
                                   </tbody>
                                 </table>
+                                </div>
                               </AccordionContent>
                             </AccordionItem>
                           );

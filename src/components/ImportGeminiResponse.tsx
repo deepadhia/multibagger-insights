@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, Loader2, Check, AlertTriangle } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 interface Props {
   stockId: string;
@@ -297,7 +298,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
 
     try {
       // Zero-trust: persist via backend which validates with Zod and enforces "pending UUID sandbox".
-      const r = await fetch("/api/gemini/import", {
+      const r = await apiFetch("/api/gemini/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

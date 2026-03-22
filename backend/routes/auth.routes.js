@@ -1,7 +1,11 @@
-import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { pool } from "../db/pool.js";
+import { JWT_SECRET } from "../config/env.js";
+import { extractToken, SESSION_COOKIE_NAME, verifyJwt } from "../lib/authToken.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +18,12 @@ const OAUTH_CLIENT_PATH = process.env.GOOGLE_OAUTH_CLIENT_JSON_PATH
   : "";
 const TOKENS_PATH = path.resolve(__dirname, "../secrets/drive-oauth-tokens.json");
 const SCOPES = ["https://www.googleapis.com/auth/drive"];
+
+const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function cookieSecure() {
+  return process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "1";
+}
 
 function getOAuthClientConfig() {
   if (!OAUTH_CLIENT_PATH || !fs.existsSync(OAUTH_CLIENT_PATH)) return null;
@@ -29,7 +39,70 @@ function getOAuthClientConfig() {
 }
 
 /**
- * GET /api/auth/drive/start — redirect user to Google OAuth consent
+ * POST /api/auth/login
+ */
+export async function loginHandler(req, res) {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, error: "Username and password required" });
+  }
+  const u = String(username).trim();
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, username, password_hash FROM app_admin_users WHERE username = $1",
+      [u]
+    );
+    if (rows.length === 0) {
+      return res.status(401).json({ ok: false, error: "Invalid credentials" });
+    }
+    const user = rows[0];
+    const ok = await bcrypt.compare(String(password), user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ ok: false, error: "Invalid credentials" });
+    }
+    const token = jwt.sign({ sub: user.id, username: user.username }, JWT_SECRET, { expiresIn: "7d" });
+    const secure = cookieSecure();
+    res.cookie(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure,
+      sameSite: "lax",
+      maxAge: COOKIE_MAX_AGE_MS,
+      path: "/",
+    });
+    return res.json({ ok: true, user: { username: user.username } });
+  } catch (err) {
+    console.error("login error:", err);
+    return res.status(500).json({ ok: false, error: "Login failed" });
+  }
+}
+
+/**
+ * POST /api/auth/logout
+ */
+export function logoutHandler(_req, res) {
+  const secure = cookieSecure();
+  res.clearCookie(SESSION_COOKIE_NAME, { path: "/", httpOnly: true, secure, sameSite: "lax" });
+  res.json({ ok: true });
+}
+
+/**
+ * GET /api/auth/me — public; returns user if session valid
+ */
+export function meHandler(req, res) {
+  const token = extractToken(req);
+  if (!token) {
+    return res.json({ user: null });
+  }
+  try {
+    const { username } = verifyJwt(token);
+    return res.json({ user: { username } });
+  } catch {
+    return res.json({ user: null });
+  }
+}
+
+/**
+ * GET /api/auth/drive/start — redirect user to Google OAuth consent (requires auth)
  */
 export function driveStartHandler(_req, res) {
   const config = getOAuthClientConfig();
@@ -108,8 +181,3 @@ export async function driveCallbackHandler(req, res) {
   }
 }
 
-const authRouter = express.Router();
-authRouter.get("/api/auth/drive/start", driveStartHandler);
-authRouter.get("/api/auth/drive/callback", driveCallbackHandler);
-
-export default authRouter;

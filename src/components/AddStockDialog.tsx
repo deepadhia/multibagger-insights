@@ -9,6 +9,7 @@ import { Plus, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/apiFetch";
 
 export function AddStockDialog() {
   const [open, setOpen] = useState(false);
@@ -53,7 +54,7 @@ export function AddStockDialog() {
     // Run fetches in background (don't block UI)
     (async () => {
       try {
-        await fetch("/api/prices/fetch", {
+        await apiFetch("/api/prices/fetch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker }),
@@ -61,7 +62,7 @@ export function AddStockDialog() {
         queryClient.invalidateQueries({ queryKey: ["prices"] });
       } catch (_) {}
       try {
-        await fetch("/api/financials/fetch", {
+        await apiFetch("/api/financials/fetch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ stock_id: stockId, ticker, screener_slug: screenerSlug }),
@@ -72,7 +73,7 @@ export function AddStockDialog() {
         queryClient.invalidateQueries({ queryKey: ["peers", stockId] });
       } catch (_) {}
       try {
-        await fetch("/api/transcripts/download", {
+        await apiFetch("/api/transcripts/download", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

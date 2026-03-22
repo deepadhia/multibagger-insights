@@ -11,6 +11,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WINDOW_OPTIONS = [
   { value: "3q", label: "3q" },
@@ -33,7 +34,7 @@ export function MasterFetchButton() {
     try {
       // 1. Prices (all stocks) – Express
       toast({ title: "Fetch all", description: "Refreshing prices…" });
-      const priceRes = await fetch("/api/prices/refresh-all", {
+      const priceRes = await apiFetch("/api/prices/refresh-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -49,7 +50,7 @@ export function MasterFetchButton() {
 
       // 2. Financials (all stocks) – Express
       toast({ title: "Fetch all", description: "Refreshing financials…" });
-      const finRes = await fetch("/api/financials/refresh-all", {
+      const finRes = await apiFetch("/api/financials/refresh-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -78,7 +79,7 @@ export function MasterFetchButton() {
 
       // 4. Transcripts (download + upload to Drive for watchlist)
       toast({ title: "Fetch all", description: "Downloading filings & uploading to Drive…" });
-      const transcriptRes = await fetch("/api/transcripts/download", {
+      const transcriptRes = await apiFetch("/api/transcripts/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2, RefreshCw, Loader2, ChevronDown, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +45,7 @@ export default function StocksPage() {
         let success = 0, failed = 0;
         for (const stock of stocks!) {
           try {
-            const r = await fetch("/api/prices/fetch", {
+            const r = await apiFetch("/api/prices/fetch", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ ticker: stock.ticker }),
@@ -60,7 +61,7 @@ export default function StocksPage() {
         for (const stock of stocks!) {
           if (success + failed > 0) await new Promise(r => setTimeout(r, 2000));
           try {
-            const r = await fetch("/api/financials/fetch", {
+            const r = await apiFetch("/api/financials/fetch", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -77,7 +78,7 @@ export default function StocksPage() {
         toast({ title: "Financials refreshed", description: `${success} updated, ${failed} failed` });
 
       } else if (key === "backfill") {
-        const r = await fetch("/api/prices/refresh-all", {
+        const r = await apiFetch("/api/prices/refresh-all", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ backfill: true }),
@@ -204,7 +205,7 @@ export default function StocksPage() {
                 if (!confirmReset) return;
                 setResettingDocs(true);
                 try {
-                  const r = await fetch("/api/transcripts/reset-all", {
+                  const r = await apiFetch("/api/transcripts/reset-all", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                   });
@@ -243,7 +244,7 @@ export default function StocksPage() {
                 if (!confirmReset) return;
                 setResettingJson(true);
                 try {
-                  const r = await fetch("/api/stocks/reset-all-json", {
+                  const r = await apiFetch("/api/stocks/reset-all-json", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                   });
