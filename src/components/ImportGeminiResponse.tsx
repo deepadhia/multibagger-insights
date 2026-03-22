@@ -313,6 +313,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
 
       queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
       queryClient.invalidateQueries({ queryKey: ["management-promises", stockId] });
+      queryClient.invalidateQueries({ queryKey: ["snapshot-counts"] });
 
       toast({
         title: "Committed to database",
@@ -404,6 +405,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
                   await supabase.from("management_promises").delete().eq("stock_id", stockId).eq("made_in_quarter", effectiveQuarter);
                   queryClient.invalidateQueries({ queryKey: ["quarterly-snapshots", stockId] });
                   queryClient.invalidateQueries({ queryKey: ["management-promises", stockId] });
+                  queryClient.invalidateQueries({ queryKey: ["snapshot-counts"] });
                   toast({ title: `Reset ${effectiveQuarter}`, description: "Snapshot and promises deleted. Ready to re-import." });
                 } catch (err: any) {
                   toast({ title: "Reset failed", description: err.message, variant: "destructive" });

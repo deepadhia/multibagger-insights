@@ -135,13 +135,15 @@ export default function StocksPage() {
     }
   };
 
+  /** Most quarterly AI snapshots first; ties → alphabetical by ticker. */
   const sortedStocks = useMemo(() => {
     if (!stocks) return [];
     const counts = snapshotCounts || {};
-    return [...stocks].sort((a: any, b: any) => {
+    return [...stocks].sort((a, b) => {
       const ca = counts[a.id] || 0;
       const cb = counts[b.id] || 0;
-      return cb - ca;
+      if (cb !== ca) return cb - ca;
+      return (a.ticker || "").localeCompare(b.ticker || "", undefined, { sensitivity: "base" });
     });
   }, [stocks, snapshotCounts]);
 
@@ -151,7 +153,10 @@ export default function StocksPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Stocks</h1>
-            <p className="text-sm text-muted-foreground font-mono mt-1">Track and manage your portfolio</p>
+            <p className="text-sm text-muted-foreground font-mono mt-1">
+              Track and manage your portfolio — rows are sorted by{" "}
+              <span className="text-foreground/90">quarterly AI snapshots</span> (most first), then ticker.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <DropdownMenu>
@@ -276,6 +281,9 @@ export default function StocksPage() {
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Ticker</th>
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Sector</th>
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Category</th>
+                  <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider" title="Rows sorted by this column (desc)">
+                    Snapshots
+                  </th>
                   <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider">Next Results</th>
                   <th className="text-right p-3 text-muted-foreground text-xs uppercase tracking-wider">Buy Price</th>
                   <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider">Sentiment</th>
@@ -284,12 +292,13 @@ export default function StocksPage() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
                 ) : !stocks?.length ? (
-                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
+                  <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
                 ) : (
                   sortedStocks.map((stock) => {
                     const analysis = latestAnalysis?.[stock.id];
+                    const snapN = snapshotCounts?.[stock.id] ?? 0;
                     return (
                       <tr
                         key={stock.id}
@@ -303,6 +312,9 @@ export default function StocksPage() {
                           <Badge variant="outline" className={getCategoryColor(stock.category)}>
                             {stock.category}
                           </Badge>
+                        </td>
+                        <td className="p-3 text-center font-mono text-xs text-muted-foreground tabular-nums">
+                          {snapN}
                         </td>
                         <td className="p-3 text-center">
                           {(stock as any).next_results_date ? (

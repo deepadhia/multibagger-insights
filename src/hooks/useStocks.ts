@@ -13,19 +13,28 @@ export function useStocks() {
   });
 }
 
+/** Count quarterly_snapshots per stock_id (PostgREST JS has no .group(); aggregate client-side). */
 export function useSnapshotCounts() {
   return useQuery({
     queryKey: ["snapshot-counts"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("quarterly_snapshots")
-        .select("stock_id, count:count(*)")
-        .group("stock_id");
-      if (error) throw error;
       const map: Record<string, number> = {};
-      (data || []).forEach((row: any) => {
-        map[row.stock_id] = Number(row.count) || 0;
-      });
+      const pageSize = 1000;
+      let from = 0;
+      for (;;) {
+        const { data, error } = await supabase
+          .from("quarterly_snapshots")
+          .select("stock_id")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const rows = data || [];
+        for (const row of rows) {
+          const id = row.stock_id as string;
+          map[id] = (map[id] || 0) + 1;
+        }
+        if (rows.length < pageSize) break;
+        from += pageSize;
+      }
       return map;
     },
   });
