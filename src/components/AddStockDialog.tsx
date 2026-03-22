@@ -5,12 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Loader2, Search } from "lucide-react";
+import { Plus, Loader2, Search, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/apiFetch";
 import { cn } from "@/lib/utils";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { metricKeysFromProfileConfig } from "@/lib/trackingProfileConfig";
 
 type SearchRow = {
   id: number;
@@ -31,6 +33,7 @@ export function AddStockDialog() {
   const [category, setCategory] = useState("Watchlist");
   const [buyPrice, setBuyPrice] = useState("");
   const [thesis, setThesis] = useState("");
+  const [trackingProfileJson, setTrackingProfileJson] = useState("");
   const [enriching, setEnriching] = useState(false);
 
   const queryClient = useQueryClient();
@@ -64,6 +67,7 @@ export function AddStockDialog() {
     setCategory("Watchlist");
     setBuyPrice("");
     setThesis("");
+    setTrackingProfileJson("");
     setEnriching(false);
   }, []);
 
@@ -105,6 +109,30 @@ export function AddStockDialog() {
       return;
     }
 
+    const profileRaw = trackingProfileJson.trim();
+    let profileConfig: Record<string, unknown> | null = null;
+    if (profileRaw) {
+      try {
+        const j = JSON.parse(profileRaw) as unknown;
+        if (typeof j !== "object" || j === null || Array.isArray(j)) {
+          toast({
+            title: "Invalid tracking JSON",
+            description: "Master prompt JSON must be a single object (not an array).",
+            variant: "destructive",
+          });
+          return;
+        }
+        profileConfig = j as Record<string, unknown>;
+      } catch {
+        toast({
+          title: "Invalid JSON",
+          description: "Fix the master prompt JSON or clear the field.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     const { data: inserted, error } = await supabase.from("stocks").insert({
       company_name: cn,
@@ -122,11 +150,37 @@ export function AddStockDialog() {
       return;
     }
 
+    const stockId = inserted.id;
+
+    if (profileConfig) {
+      const { error: profileErr } = await supabase
+        .from("stock_tracking_profiles")
+        .upsert({ stock_id: stockId, config: profileConfig as Record<string, unknown> }, { onConflict: "stock_id" });
+      if (profileErr) {
+        toast({
+          title: "Stock added",
+          description: `Tracking profile not saved: ${profileErr.message}. You can paste JSON in Master Prompt on the stock page.`,
+          variant: "destructive",
+        });
+      } else {
+        const stockUpdates: { tracking_directives?: string; metric_keys?: string[] } = {};
+        if (typeof profileConfig.tracking_directives === "string") {
+          stockUpdates.tracking_directives = profileConfig.tracking_directives;
+        }
+        const mk = metricKeysFromProfileConfig(profileConfig);
+        if (mk !== null && mk.length > 0) stockUpdates.metric_keys = mk;
+        if (Object.keys(stockUpdates).length > 0) {
+          await supabase.from("stocks").update(stockUpdates).eq("id", stockId);
+        }
+        queryClient.invalidateQueries({ queryKey: ["stock-tracking-profile", stockId] });
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["stock", stockId] });
     queryClient.invalidateQueries({ queryKey: ["stocks"] });
     setLoading(false);
     setOpen(false);
 
-    const stockId = inserted.id;
     toast({
       title: "Stock added",
       description: `Fetching price, financials & filings for ${t} in background…`,
@@ -301,6 +355,33 @@ export function AddStockDialog() {
               rows={3}
             />
           </div>
+
+          <Collapsible className="rounded-md border border-border bg-muted/20">
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors [&[data-state=open]_svg]:rotate-180"
+              >
+                <span>Master prompt JSON (optional)</span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70 transition-transform duration-200" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2 px-3 pb-3">
+              <p className="text-[10px] text-muted-foreground font-mono leading-relaxed">
+                Same object as <span className="text-foreground">Copy Gemini prompt</span> / <span className="text-foreground">Master Prompt</span>{" "}
+                (<code className="text-primary">core_thesis</code>, <code className="text-primary">tracking_directives</code>,{" "}
+                <code className="text-primary">metric_keys</code>, …). Validated before the stock is created.
+              </p>
+              <Textarea
+                value={trackingProfileJson}
+                onChange={(e) => setTrackingProfileJson(e.target.value)}
+                className="bg-background border-border font-mono text-xs min-h-[140px]"
+                placeholder={`{\n  "core_thesis": "…",\n  "tracking_directives": "…",\n  "metric_keys": ["revenue_growth", "opm"]\n}`}
+                spellCheck={false}
+              />
+            </CollapsibleContent>
+          </Collapsible>
+
           <Button type="submit" disabled={loading || enriching} className="w-full font-mono">
             {loading ? (
               <>
