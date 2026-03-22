@@ -352,7 +352,7 @@ export function ImportGeminiResponse({ stockId, ticker }: Props) {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="font-mono text-xs">
           <Upload className="h-3 w-3" />
-          <span className="ml-1">Import Gemini</span>
+          <span className="ml-1">Import JSON</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">

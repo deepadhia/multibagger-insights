@@ -47,8 +47,23 @@ function isPdfBuffer(buf) {
  */
 function isNonPdfMediaUrl(href) {
   if (!href || typeof href !== "string") return false;
-  const bare = href.trim().split(/[?#]/)[0].toLowerCase();
+  const lower = href.trim().toLowerCase();
+  if (lower.includes("youtube.com/") || lower.includes("youtu.be/")) return true;
+  if (lower.includes("audio-recording")) return true;
+  const bare = lower.split(/[?#]/)[0];
   return /\.(mp3|mp4|m4a|wav|webm|ogg|aac|mov|mkv|flv)$/i.test(bare);
+}
+
+/**
+ * Direct BSE corporate-filing PDFs (AttachHis / AttachLive). Text-based quarter detection
+ * often disagrees (prior-year tables, scanned PDFs). We still keep the file under the
+ * Screener-mapped quarter instead of deleting it.
+ */
+function isBseCorpFilingDirectPdf(href) {
+  if (!href || typeof href !== "string") return false;
+  const pathOnly = href.trim().split(/[?#]/)[0].toLowerCase();
+  if (!pathOnly.endsWith(".pdf")) return false;
+  return pathOnly.includes("bseindia.com/xml-data/corpfiling/attach");
 }
 
 /** If response is HTML (e.g. BSE attachment page), try to find a direct PDF link. Returns first candidate URL or null. */
@@ -470,6 +485,13 @@ async function backfillQuarterForSymbol(symbol, quarter, links, allowedQuartersF
           console.log(`[Merge] Moved to correct quarter: ${path.basename(savePath)} → ${symbol}/${detectedQuarter}/${newName} (content was ${detectedQuarter}, not ${expectedQuarter})`);
         }
         return false;
+      }
+      const sourceHref = linkForMeta && linkForMeta.href ? String(linkForMeta.href) : "";
+      if (isBseCorpFilingDirectPdf(sourceHref)) {
+        console.warn(
+          `[Merge] Quarter from PDF text (${detectedQuarter}) ≠ expected folder (${expectedQuarter}); keeping BSE filing PDF: ${path.basename(savePath)} (${categoryLabel}).`,
+        );
+        return true;
       }
       fs.unlinkSync(savePath);
       console.warn(

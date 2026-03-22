@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useManagementPromises, useQuarterlySnapshots, useStockTrackingProfile } from "@/hooks/useStocks";
+import { getMetricKeysForPrompt } from "@/lib/trackingProfileConfig";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, Check, Braces } from "lucide-react";
 
@@ -74,11 +75,7 @@ function buildGeminiContext(
 
   const profile = trackingConfig;
 
-  const metricKeys = Array.isArray(profile?.metric_keys)
-    ? (profile.metric_keys as string[])
-    : Array.isArray(stock.metric_keys)
-      ? (stock.metric_keys as string[])
-      : ["revenue_growth", "opm", "pat_growth"];
+  const metricKeys = getMetricKeysForPrompt(profile as Record<string, unknown> | null | undefined, stock.metric_keys);
 
   const metricsSchema = {
     revenue_growth: { value: "", evidence: "" },

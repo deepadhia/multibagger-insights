@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
+import { parseTrackingProfileConfig } from "@/lib/trackingProfileConfig";
 
 export function useStocks() {
   return useQuery({
@@ -155,7 +156,7 @@ export function useStockTrackingProfile(stockId: string) {
         .eq("stock_id", stockId)
         .maybeSingle();
       if (error) throw error;
-      return data?.config as any | null;
+      return parseTrackingProfileConfig(data?.config);
     },
     enabled: !!stockId,
   });
