@@ -1,38 +1,119 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/apiFetch";
+import { cn } from "@/lib/utils";
+
+type SearchRow = {
+  id: number;
+  company_name: string;
+  screener_slug: string;
+  ticker_hint: string;
+};
 
 export function AddStockDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [ticker, setTicker] = useState("");
+  const [screenerSlug, setScreenerSlug] = useState("");
+  const [sector, setSector] = useState("");
+  const [category, setCategory] = useState("Watchlist");
+  const [buyPrice, setBuyPrice] = useState("");
+  const [thesis, setThesis] = useState("");
+  const [enriching, setEnriching] = useState(false);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQ]);
+
+  const { data: searchPayload, isFetching: searchLoading } = useQuery({
+    queryKey: ["stock-search", debouncedQ],
+    queryFn: async () => {
+      const r = await apiFetch(`/api/market/stock-search?q=${encodeURIComponent(debouncedQ)}`);
+      if (!r.ok) throw new Error("Search failed");
+      return r.json() as Promise<{ ok: boolean; results: SearchRow[] }>;
+    },
+    enabled: open && debouncedQ.length >= 2,
+    staleTime: 60_000,
+  });
+
+  const searchResults = searchPayload?.results ?? [];
+
+  const resetForm = useCallback(() => {
+    setSearchQ("");
+    setDebouncedQ("");
+    setCompanyName("");
+    setTicker("");
+    setScreenerSlug("");
+    setSector("");
+    setCategory("Watchlist");
+    setBuyPrice("");
+    setThesis("");
+    setEnriching(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) resetForm();
+  }, [open, resetForm]);
+
+  const handlePickResult = async (row: SearchRow) => {
+    setCompanyName(row.company_name);
+    setScreenerSlug(row.screener_slug);
+    setTicker(row.ticker_hint);
+    setSearchQ("");
+    setEnriching(true);
+    try {
+      const r = await apiFetch(`/api/market/stock-enrich?slug=${encodeURIComponent(row.screener_slug)}`);
+      const d = (await r.json()) as {
+        ok?: boolean;
+        ticker?: string;
+        company_name?: string | null;
+        sector?: string | null;
+      };
+      if (d.ticker) setTicker(d.ticker);
+      if (d.company_name) setCompanyName(d.company_name);
+      if (d.sector) setSector(d.sector);
+    } catch {
+      /* keep search row values */
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const t = ticker.trim().toUpperCase();
+    const slug = (screenerSlug.trim() || t).toUpperCase();
+    const cn = companyName.trim();
+    if (!cn || !t) {
+      toast({ title: "Missing fields", description: "Company name and ticker are required.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
-    const form = new FormData(e.currentTarget);
-
-    const ticker = (form.get("ticker") as string).toUpperCase();
-    const screenerSlug = (form.get("screener_slug") as string) || ticker;
-
     const { data: inserted, error } = await supabase.from("stocks").insert({
-      company_name: form.get("company_name") as string,
-      ticker,
-      sector: form.get("sector") as string || null,
-      category: form.get("category") as string,
-      buy_price: form.get("buy_price") ? Number(form.get("buy_price")) : null,
-      investment_thesis: form.get("investment_thesis") as string || null,
-      screener_slug: screenerSlug,
+      company_name: cn,
+      ticker: t,
+      sector: sector.trim() || null,
+      category,
+      buy_price: buyPrice ? Number(buyPrice) : null,
+      investment_thesis: thesis.trim() || null,
+      screener_slug: slug,
     }).select().single();
 
     if (error || !inserted) {
@@ -48,10 +129,9 @@ export function AddStockDialog() {
     const stockId = inserted.id;
     toast({
       title: "Stock added",
-      description: `Fetching price, financials & filings for ${ticker} in background…`,
+      description: `Fetching price, financials & filings for ${t} in background…`,
     });
 
-    // Run fetches in background (don't block UI)
     (async () => {
       try {
         await apiFetch("/api/stocks/refresh-screener-data", {
@@ -59,8 +139,8 @@ export function AddStockDialog() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             stock_id: stockId,
-            ticker,
-            screener_slug: screenerSlug,
+            ticker: t,
+            screener_slug: slug,
           }),
         });
         queryClient.invalidateQueries({ queryKey: ["prices"] });
@@ -74,7 +154,7 @@ export function AddStockDialog() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            symbols: [ticker],
+            symbols: [t],
             onlyMissing: true,
             uploadAfterDownload: true,
             window: "1y",
@@ -92,59 +172,145 @@ export function AddStockDialog() {
           <Plus className="h-4 w-4 mr-1" /> Add Stock
         </Button>
       </DialogTrigger>
-      <DialogContent className="bg-card border-border">
+      <DialogContent className="bg-card border-border max-h-[min(90vh,720px)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-mono text-primary">Add Stock</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="font-mono text-xs">Company Name</Label>
-                <Input name="company_name" required className="bg-muted border-border font-mono" />
+          <div className="space-y-2">
+            <Label className="font-mono text-xs flex items-center gap-1.5">
+              <Search className="h-3 w-3" />
+              Search (Screener.in — India equities)
+            </Label>
+            <Input
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              placeholder="Type company or ticker, e.g. hdfc, reliance…"
+              className="bg-muted border-border font-mono text-sm"
+              autoComplete="off"
+            />
+            <p className="text-[10px] text-muted-foreground font-mono">
+              Pick a row to auto-fill NSE ticker (from Screener page), name, and slug. You can still edit fields below.
+            </p>
+            {open && debouncedQ.length >= 2 && (
+              <div className="rounded-md border border-border bg-muted/40 max-h-48 overflow-y-auto">
+                {searchLoading ? (
+                  <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground font-mono">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Searching…
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground font-mono">No matches. Try another term or fill the form manually.</p>
+                ) : (
+                  <ul className="py-1">
+                    {searchResults.map((row) => (
+                      <li key={row.id}>
+                        <button
+                          type="button"
+                          onClick={() => void handlePickResult(row)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-xs font-mono hover:bg-accent/80 transition-colors",
+                            "border-b border-border/50 last:border-0"
+                          )}
+                        >
+                          <span className="font-semibold text-foreground block">{row.company_name}</span>
+                          <span className="text-muted-foreground">
+                            Screener: <span className="text-primary">{row.screener_slug}</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              <div>
-                <Label className="font-mono text-xs">Ticker</Label>
-                <Input name="ticker" required className="bg-muted border-border font-mono uppercase" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="font-mono text-xs">Sector</Label>
-                <Input name="sector" className="bg-muted border-border font-mono" />
-              </div>
-              <div>
-                <Label className="font-mono text-xs">Category</Label>
-                <Select name="category" defaultValue="Watchlist">
-                  <SelectTrigger className="bg-muted border-border font-mono">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Core">Core</SelectItem>
-                    <SelectItem value="Starter">Starter</SelectItem>
-                    <SelectItem value="Watchlist">Watchlist</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="font-mono text-xs">Buy Price</Label>
-                <Input name="buy_price" type="number" step="0.01" className="bg-muted border-border font-mono" />
-              </div>
-              <div>
-                <Label className="font-mono text-xs">Screener Slug</Label>
-                <Input name="screener_slug" placeholder="e.g. HBLENGINE" className="bg-muted border-border font-mono" />
-              </div>
+            )}
+          </div>
+
+          {enriching && (
+            <p className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Resolving NSE ticker from Screener…
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="font-mono text-xs">Company name</Label>
+              <Input
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+                className="bg-muted border-border font-mono"
+              />
             </div>
             <div>
-              <Label className="font-mono text-xs">Investment Thesis</Label>
-              <Textarea name="investment_thesis" className="bg-muted border-border font-mono" rows={3} />
+              <Label className="font-mono text-xs">NSE ticker</Label>
+              <Input
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                required
+                className="bg-muted border-border font-mono uppercase"
+              />
             </div>
-            <Button type="submit" disabled={loading} className="w-full font-mono">
-              {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Adding...</> : "Add Stock"}
-            </Button>
-          </form>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="font-mono text-xs">Sector</Label>
+              <Input value={sector} onChange={(e) => setSector(e.target.value)} className="bg-muted border-border font-mono" />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="bg-muted border-border font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Core">Core</SelectItem>
+                  <SelectItem value="Starter">Starter</SelectItem>
+                  <SelectItem value="Watchlist">Watchlist</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="font-mono text-xs">Buy price</Label>
+              <Input
+                value={buyPrice}
+                onChange={(e) => setBuyPrice(e.target.value)}
+                type="number"
+                step="0.01"
+                className="bg-muted border-border font-mono"
+              />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Screener slug</Label>
+              <Input
+                value={screenerSlug}
+                onChange={(e) => setScreenerSlug(e.target.value.toUpperCase())}
+                placeholder="Usually same as ticker"
+                className="bg-muted border-border font-mono uppercase"
+              />
+            </div>
+          </div>
+          <div>
+            <Label className="font-mono text-xs">Investment thesis</Label>
+            <Textarea
+              value={thesis}
+              onChange={(e) => setThesis(e.target.value)}
+              className="bg-muted border-border font-mono"
+              rows={3}
+            />
+          </div>
+          <Button type="submit" disabled={loading || enriching} className="w-full font-mono">
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Adding…
+              </>
+            ) : (
+              "Add Stock"
+            )}
+          </Button>
+        </form>
       </DialogContent>
     </Dialog>
   );

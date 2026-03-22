@@ -15,6 +15,7 @@ import {
   driveCallbackHandler,
 } from "./routes/auth.routes.js";
 import { geminiRouter } from "./routes/gemini.routes.js";
+import { marketRouter } from "./routes/market.routes.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 
 export const app = express();
@@ -41,6 +42,7 @@ app.get("/api/auth/drive/start", driveStartHandler);
 app.use("/files", express.static(getDataDir()));
 
 app.use(proxyRouter);
+app.use(marketRouter);
 app.use(priceRouter);
 app.use(financialsRouter);
 app.use(stocksRouter);
