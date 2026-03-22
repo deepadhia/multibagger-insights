@@ -53,7 +53,7 @@ VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=<anon_key_from_supabase_start>
 ```
 
-You can use `.env.example` as a reference template for required variables.
+Use `.env.frontend.example` for Vite (`VITE_*`) and `.env.example` for the Express backend (`DATABASE_URL`, `JWT_SECRET`, etc.); merge both into `.env.local` for local dev.
 
 ### 3.0 Admin login (Express + UI)
 

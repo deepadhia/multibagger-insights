@@ -183,23 +183,31 @@ export function SnapshotsTab({ stockId }: Props) {
             <Card className="bg-card border-border overflow-hidden">
               {/* ═══ Header — always visible ═══ */}
               <CollapsibleTrigger asChild>
-                <button className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors text-left">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <button
+                  type="button"
+                  className="w-full flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 hover:bg-muted/30 transition-colors text-left min-w-0"
+                >
+                  <div className="flex items-start gap-3 min-w-0 w-full sm:flex-1 sm:min-w-0">
+                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <FileText className="h-4 w-4 text-primary" />
                     </div>
-                    <div>
-                      <h3 className="font-mono text-sm font-semibold text-foreground">
-                        {snap.quarter}
-                      </h3>
-                      <p className="text-xs text-muted-foreground line-clamp-1 max-w-[500px]">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-mono text-sm font-semibold text-foreground">
+                          {snap.quarter}
+                        </h3>
+                        <span className="flex shrink-0 text-muted-foreground sm:hidden">
+                          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2 sm:line-clamp-1 break-words max-w-full mt-0.5">
                         {snap.summary?.slice(0, 100)}...
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:max-w-[min(100%,28rem)] sm:justify-end sm:flex-shrink-0 pl-11 sm:pl-0">
                     {snap.thesis_status && (
-                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                      <Badge variant="outline" className={`font-mono text-[10px] shrink-0 whitespace-nowrap ${
                         snap.thesis_status === "strengthening" ? "text-terminal-green border-terminal-green/30" :
                         snap.thesis_status === "weakening" ? "text-terminal-amber border-terminal-amber/30" :
                         snap.thesis_status === "broken" ? "text-terminal-red border-terminal-red/30" :
@@ -209,7 +217,7 @@ export function SnapshotsTab({ stockId }: Props) {
                       </Badge>
                     )}
                     {confidenceScore != null && (
-                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                      <Badge variant="outline" className={`font-mono text-[10px] shrink-0 whitespace-nowrap ${
                         confidenceScore >= 80 ? "text-terminal-green border-terminal-green/30" :
                         confidenceScore >= 60 ? "text-foreground" :
                         confidenceScore >= 40 ? "text-terminal-amber border-terminal-amber/30" :
@@ -221,7 +229,7 @@ export function SnapshotsTab({ stockId }: Props) {
                     {actionDecision && (
                       <Badge
                         variant="outline"
-                        className={`font-mono text-[10px] ${
+                        className={`font-mono text-[9px] sm:text-[10px] shrink-0 text-center leading-tight whitespace-normal max-w-[11rem] sm:max-w-none ${
                           String(actionDecision).includes("BUILD")
                             ? "text-terminal-green border-terminal-green/40"
                             : String(actionDecision).includes("CUT")
@@ -235,13 +243,13 @@ export function SnapshotsTab({ stockId }: Props) {
                     {actionConviction && (
                       <Badge
                         variant="outline"
-                        className="font-mono text-[10px] text-muted-foreground border-muted-foreground/40"
+                        className="font-mono text-[10px] text-muted-foreground border-muted-foreground/40 shrink-0 whitespace-nowrap"
                       >
                         {actionConviction}
                       </Badge>
                     )}
                     {thesisMomentum && (
-                      <Badge variant="outline" className={`font-mono text-[10px] ${
+                      <Badge variant="outline" className={`font-mono text-[10px] shrink-0 whitespace-nowrap ${
                         thesisMomentum === "improving" ? "text-terminal-green border-terminal-green/30" :
                         thesisMomentum === "deteriorating" ? "text-terminal-red border-terminal-red/30" :
                         "text-muted-foreground"
@@ -250,18 +258,20 @@ export function SnapshotsTab({ stockId }: Props) {
                       </Badge>
                     )}
                     {flags.length > 0 && (
-                      <Badge variant="destructive" className="font-mono text-[10px] gap-1">
+                      <Badge variant="destructive" className="font-mono text-[10px] gap-1 shrink-0">
                         <AlertTriangle className="h-2.5 w-2.5" />
                         {flags.length}
                       </Badge>
                     )}
                     {dodged.length > 0 && (
-                      <Badge variant="outline" className="font-mono text-[10px] gap-1 text-terminal-amber border-terminal-amber/30">
+                      <Badge variant="outline" className="font-mono text-[10px] gap-1 text-terminal-amber border-terminal-amber/30 shrink-0">
                         <MessageSquare className="h-2.5 w-2.5" />
                         {dodged.length}
                       </Badge>
                     )}
-                    {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                    <span className="hidden sm:flex shrink-0 text-muted-foreground">
+                      {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </span>
                   </div>
                 </button>
               </CollapsibleTrigger>
