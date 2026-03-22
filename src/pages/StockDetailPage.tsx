@@ -31,7 +31,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiUrl } from "@/lib/apiFetch";
 import {
-  RefreshCw, Loader2, DollarSign, TrendingUp, TrendingDown,
+  RefreshCw, Loader2, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Target, AlertTriangle, Zap, Quote,
   BarChart3, Activity, Shield, FileText, Users, Briefcase, ExternalLink, Trash2,
 } from "lucide-react";
@@ -59,8 +59,7 @@ export default function StockDetailPage() {
   const { data: snapshots } = useQuarterlySnapshots(id!);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [fetchingFinancials, setFetchingFinancials] = useState(false);
-  const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [fetchingScreenerData, setFetchingScreenerData] = useState(false);
   const [resettingInsights, setResettingInsights] = useState(false);
   const [resettingFiles, setResettingFiles] = useState(false);
 
@@ -94,11 +93,12 @@ export default function StockDetailPage() {
   const [deletingFileKey, setDeletingFileKey] = useState<string | null>(null);
   const [fetchingFilingsForStock, setFetchingFilingsForStock] = useState(false);
 
-  const handleFetchFinancials = async () => {
+  /** Single API: live quote + Screener financials (same as old Price + Financials buttons). */
+  const handleFetchScreenerData = async () => {
     if (!stock) return;
-    setFetchingFinancials(true);
+    setFetchingScreenerData(true);
     try {
-      const r = await apiFetch("/api/financials/fetch", {
+      const r = await apiFetch("/api/stocks/refresh-screener-data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,53 +109,46 @@ export default function StockDetailPage() {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
-        toast({ title: "Financials unavailable", description: data?.error || `Request failed: ${r.status}`, variant: "destructive" });
-        return;
-      }
-      if (data?.success === false) {
-        toast({ title: "Financials unavailable", description: data.error || `Could not fetch data for ${stock.ticker}`, variant: "destructive" });
-        return;
-      }
-      queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
-      queryClient.invalidateQueries({ queryKey: ["financial-results", id] });
-      queryClient.invalidateQueries({ queryKey: ["shareholding", id] });
-      queryClient.invalidateQueries({ queryKey: ["peers", id] });
-      toast({ title: "Financial data updated", description: `Fetched data for ${stock.ticker}` });
-    } catch (err: unknown) {
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Request failed", variant: "destructive" });
-    } finally {
-      setFetchingFinancials(false);
-    }
-  };
-
-  const handleFetchPrice = async () => {
-    if (!stock) return;
-    setFetchingPrice(true);
-    try {
-      const r = await apiFetch("/api/prices/fetch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker: stock.ticker }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        toast({ title: "Live price unavailable", description: data?.error || `Request failed: ${r.status}`, variant: "destructive" });
-        return;
-      }
-      if (data?.success === false) {
         toast({
-          title: "Live price unavailable",
-          description: data.message || `Could not fetch live quote for ${stock.ticker} right now.`,
+          title: "Refresh failed",
+          description: data?.error || `Request failed: ${r.status}`,
           variant: "destructive",
         });
         return;
       }
+      const priceOk = data?.price?.success === true;
+      const finOk = data?.financials?.success === true;
       queryClient.invalidateQueries({ queryKey: ["prices", id] });
-      toast({ title: "Price updated", description: `${stock.ticker}: ₹${data.price}` });
+      queryClient.invalidateQueries({ queryKey: ["financial-metrics", id] });
+      queryClient.invalidateQueries({ queryKey: ["financial-results", id] });
+      queryClient.invalidateQueries({ queryKey: ["shareholding", id] });
+      queryClient.invalidateQueries({ queryKey: ["peers", id] });
+
+      const priceLine =
+        priceOk && data.price?.price != null ? `Price ₹${data.price.price}` : `Price: ${data?.price?.error || "failed"}`;
+      const finLine = finOk ? "Financials updated" : `Financials: ${data?.financials?.error || "failed"}`;
+
+      if (priceOk && finOk) {
+        toast({
+          title: "Screener data updated",
+          description: `${stock.ticker} — ${priceLine}; ${finLine}.`,
+        });
+      } else if (priceOk || finOk) {
+        toast({
+          title: "Partial update",
+          description: `${priceLine}. ${finLine}.`,
+        });
+      } else {
+        toast({
+          title: "Screener refresh failed",
+          description: `${priceLine}. ${finLine}.`,
+          variant: "destructive",
+        });
+      }
     } catch (err: unknown) {
       toast({ title: "Error", description: err instanceof Error ? err.message : "Request failed", variant: "destructive" });
     } finally {
-      setFetchingPrice(false);
+      setFetchingScreenerData(false);
     }
   };
 
@@ -432,13 +425,17 @@ export default function StockDetailPage() {
                 )}
               </div>
             )}
-            <Button variant="outline" size="sm" onClick={handleFetchPrice} disabled={fetchingPrice} className="font-mono text-xs">
-              {fetchingPrice ? <Loader2 className="h-3 w-3 animate-spin" /> : <DollarSign className="h-3 w-3" />}
-              <span className="ml-1">Price</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleFetchFinancials} disabled={fetchingFinancials} className="font-mono text-xs">
-              {fetchingFinancials ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              <span className="ml-1">Financials</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchScreenerData}
+              disabled={fetchingScreenerData}
+              className="font-mono text-xs"
+              title="Live price + Screener.in financials in one request"
+            >
+              {fetchingScreenerData ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              <span className="ml-1 hidden sm:inline">Price &amp; financials</span>
+              <span className="ml-1 sm:hidden">Data</span>
             </Button>
             <CopyGeminiPrompt stock={stock} />
             <ImportGeminiResponse stockId={stock.id} ticker={stock.ticker} />
@@ -603,9 +600,6 @@ export default function StockDetailPage() {
             <TabsTrigger value="financials" className="font-mono text-xs gap-1.5">
               <Activity className="h-3 w-3" /> Financials
             </TabsTrigger>
-            <TabsTrigger value="analysis" className="font-mono text-xs gap-1.5">
-              <Zap className="h-3 w-3" /> Analysis
-            </TabsTrigger>
             {totalCommitments > 0 && (
               <TabsTrigger value="commitments" className="font-mono text-xs gap-1.5">
                 <Shield className="h-3 w-3" /> Commitments
@@ -652,7 +646,7 @@ export default function StockDetailPage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <EmptyState text="No price data. Click 'Price' to fetch." />
+                  <EmptyState text="No price data. Use Price & financials above." />
                 )}
               </Card>
 
@@ -672,7 +666,7 @@ export default function StockDetailPage() {
                     </ComposedChart>
                   </ResponsiveContainer>
                 ) : (
-                  <EmptyState text="No financial data. Click 'Financials' to fetch." />
+                  <EmptyState text="No financial data. Use Price & financials above." />
                 )}
               </Card>
             </div>
@@ -717,23 +711,131 @@ export default function StockDetailPage() {
               </Card>
             </div>
 
-            {/* Latest Analysis Summary */}
-            {latestAnalysis && (
-              <Card className="p-4 bg-card border-border card-glow">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Latest AI Analysis — {latestAnalysis.quarter} {latestAnalysis.year}
-                  </h3>
-                  <div className="flex gap-2">
-                    {latestAnalysis.management_tone && <ToneBadge tone={latestAnalysis.management_tone} />}
-                    {latestAnalysis.sentiment_score && <SentimentBadge score={latestAnalysis.sentiment_score} size="md" />}
+            {/* Transcript analysis (Transcripts page) — full detail lives here; Snapshots tab = quarterly Gemini JSON */}
+            {latestAnalysis ? (
+              <>
+                <Card className="p-3 bg-muted/50 border-border rounded">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    <strong>Transcripts</strong> flow: paste an earnings call → drivers, risks, tone, sentiment.{" "}
+                    <strong>Snapshots</strong> tab holds quarterly Gemini imports (thesis, metrics, raw JSON).
+                  </p>
+                </Card>
+                <Card className="p-5 bg-card border-border card-glow">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+                    <div>
+                      <h3 className="font-mono text-sm font-semibold text-foreground">
+                        {latestAnalysis.quarter} {latestAnalysis.year}
+                      </h3>
+                      <p className="text-[10px] text-muted-foreground font-mono mt-0.5">Latest concall transcript analysis</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {latestAnalysis.management_tone && <ToneBadge tone={latestAnalysis.management_tone} />}
+                      {latestAnalysis.sentiment_score && <SentimentBadge score={latestAnalysis.sentiment_score} size="md" />}
+                    </div>
                   </div>
-                </div>
-                {latestAnalysis.analysis_summary && (
-                  <p className="text-sm text-foreground leading-relaxed">{latestAnalysis.analysis_summary}</p>
+
+                  {latestAnalysis.analysis_summary && (
+                    <p className="text-sm text-foreground leading-relaxed mb-5">{latestAnalysis.analysis_summary}</p>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                    {latestAnalysis.guidance && (
+                      <InfoCard icon={<Target className="h-3.5 w-3.5 text-terminal-cyan" />} title="Guidance" text={latestAnalysis.guidance} />
+                    )}
+                    {latestAnalysis.demand_outlook && (
+                      <InfoCard icon={<TrendingUp className="h-3.5 w-3.5 text-terminal-green" />} title="Demand Outlook" text={latestAnalysis.demand_outlook} />
+                    )}
+                    {latestAnalysis.capacity_expansion && (
+                      <InfoCard icon={<BarChart3 className="h-3.5 w-3.5 text-terminal-amber" />} title="Capacity Expansion" text={latestAnalysis.capacity_expansion} />
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {latestAnalysis.growth_drivers && (
+                      <InsightList title="Growth Drivers" items={latestAnalysis.growth_drivers as string[]} icon={<TrendingUp className="h-3 w-3" />} color="terminal-green" />
+                    )}
+                    {latestAnalysis.risks && (
+                      <InsightList title="Risks" items={latestAnalysis.risks as string[]} icon={<AlertTriangle className="h-3 w-3" />} color="terminal-red" />
+                    )}
+                    {latestAnalysis.margin_drivers && (
+                      <InsightList title="Margin Drivers" items={latestAnalysis.margin_drivers as string[]} icon={<TrendingUp className="h-3 w-3" />} color="terminal-cyan" />
+                    )}
+                    {latestAnalysis.industry_tailwinds && (
+                      <InsightList title="Industry Tailwinds" items={latestAnalysis.industry_tailwinds as string[]} icon={<Zap className="h-3 w-3" />} color="terminal-blue" />
+                    )}
+                    {latestAnalysis.hidden_signals && (
+                      <InsightList title="Hidden Signals" items={latestAnalysis.hidden_signals as string[]} icon={<Zap className="h-3 w-3" />} color="terminal-amber" />
+                    )}
+                  </div>
+
+                  {latestAnalysis.important_quotes && (latestAnalysis.important_quotes as string[]).length > 0 && (
+                    <div className="mt-5">
+                      <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                        <Quote className="h-3 w-3" /> Important Quotes
+                      </h4>
+                      <div className="space-y-2">
+                        {(latestAnalysis.important_quotes as string[]).map((q, i) => (
+                          <blockquote key={i} className="text-xs text-muted-foreground italic border-l-2 border-terminal-cyan/40 pl-3 py-1">
+                            &ldquo;{q}&rdquo;
+                          </blockquote>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                {analyses && analyses.length > 1 && (
+                  <Card className="p-4 bg-card border-border card-glow">
+                    <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Older concall analyses</h3>
+                    <div className="space-y-2">
+                      {analyses.slice(1).map((a) => (
+                        <div key={a.id} className="p-3 bg-muted rounded border border-border/50 hover:border-border transition-colors">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <span className="font-mono text-xs font-semibold text-foreground">{a.quarter} {a.year}</span>
+                            <div className="flex gap-2">
+                              {a.management_tone && <ToneBadge tone={a.management_tone} />}
+                              {a.sentiment_score && <SentimentBadge score={a.sentiment_score} />}
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{a.analysis_summary}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
                 )}
-                <p className="text-[10px] text-muted-foreground mt-2 italic">
-                  ℹ Analysis data comes from AI processing of earnings call transcripts you upload on the Transcripts page.
+              </>
+            ) : snapshots && snapshots.length > 0 ? (
+              <Card className="p-5 bg-card border-border card-glow space-y-4">
+                <div>
+                  <h3 className="font-mono text-sm font-semibold text-foreground">Quarterly AI (Gemini) — no concall transcript run yet</h3>
+                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                    You have <strong>{snapshots.length}</strong> imported snapshot(s). Thesis, scores, metrics, and raw JSON are in the{" "}
+                    <strong className="text-foreground">Snapshots</strong> tab. To get classic transcript extraction (drivers, risks, tone), open{" "}
+                    <strong className="text-foreground">Transcripts</strong> and analyze an earnings call for this stock.
+                  </p>
+                </div>
+                {snapshots[0] && (
+                  <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Latest quarter preview</p>
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="font-mono text-xs font-semibold">{snapshots[0].quarter}</span>
+                      {snapshots[0].thesis_status && (
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          {snapshots[0].thesis_status}
+                        </Badge>
+                      )}
+                    </div>
+                    {snapshots[0].summary && (
+                      <p className="text-xs text-muted-foreground line-clamp-4">{snapshots[0].summary}</p>
+                    )}
+                  </div>
+                )}
+              </Card>
+            ) : (
+              <Card className="p-5 bg-card border-border card-glow">
+                <p className="text-sm text-muted-foreground leading-relaxed text-center">
+                  No concall analysis and no quarterly snapshots yet. Use <strong className="text-foreground">Transcripts</strong> (paste a call) or{" "}
+                  <strong className="text-foreground">Snapshots</strong> (import Gemini JSON) to add research.
                 </p>
               </Card>
             )}
@@ -1013,106 +1115,7 @@ export default function StockDetailPage() {
             )}
 
             {(!financials || financials.length === 0) && (!quarterlyResults || quarterlyResults.length === 0) && (
-              <EmptyState text="No financial data. Click 'Financials' to fetch from Screener." />
-            )}
-          </TabsContent>
-
-          {/* ═══ ANALYSIS TAB ═══ */}
-          <TabsContent value="analysis" className="space-y-4 mt-4">
-            <Card className="p-3 bg-muted/50 border-border rounded">
-              <p className="text-xs text-muted-foreground">
-                <strong>How it works:</strong> Go to the <strong>Transcripts</strong> page → select this stock → paste an earnings call transcript → AI automatically extracts growth drivers, risks, sentiment, management tone, and commitments.
-              </p>
-            </Card>
-
-            {latestAnalysis ? (
-              <>
-                <Card className="p-5 bg-card border-border card-glow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-mono text-sm font-semibold text-foreground">
-                        {latestAnalysis.quarter} {latestAnalysis.year}
-                      </h3>
-                      <p className="text-[10px] text-muted-foreground font-mono mt-0.5">Latest Earnings Analysis</p>
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      {latestAnalysis.management_tone && <ToneBadge tone={latestAnalysis.management_tone} />}
-                      {latestAnalysis.sentiment_score && <SentimentBadge score={latestAnalysis.sentiment_score} size="md" />}
-                    </div>
-                  </div>
-
-                  {latestAnalysis.analysis_summary && (
-                    <p className="text-sm text-foreground leading-relaxed mb-5">{latestAnalysis.analysis_summary}</p>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-                    {latestAnalysis.guidance && (
-                      <InfoCard icon={<Target className="h-3.5 w-3.5 text-terminal-cyan" />} title="Guidance" text={latestAnalysis.guidance} />
-                    )}
-                    {latestAnalysis.demand_outlook && (
-                      <InfoCard icon={<TrendingUp className="h-3.5 w-3.5 text-terminal-green" />} title="Demand Outlook" text={latestAnalysis.demand_outlook} />
-                    )}
-                    {latestAnalysis.capacity_expansion && (
-                      <InfoCard icon={<BarChart3 className="h-3.5 w-3.5 text-terminal-amber" />} title="Capacity Expansion" text={latestAnalysis.capacity_expansion} />
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {latestAnalysis.growth_drivers && (
-                      <InsightList title="Growth Drivers" items={latestAnalysis.growth_drivers as string[]} icon={<TrendingUp className="h-3 w-3" />} color="terminal-green" />
-                    )}
-                    {latestAnalysis.risks && (
-                      <InsightList title="Risks" items={latestAnalysis.risks as string[]} icon={<AlertTriangle className="h-3 w-3" />} color="terminal-red" />
-                    )}
-                    {latestAnalysis.margin_drivers && (
-                      <InsightList title="Margin Drivers" items={latestAnalysis.margin_drivers as string[]} icon={<TrendingUp className="h-3 w-3" />} color="terminal-cyan" />
-                    )}
-                    {latestAnalysis.industry_tailwinds && (
-                      <InsightList title="Industry Tailwinds" items={latestAnalysis.industry_tailwinds as string[]} icon={<Zap className="h-3 w-3" />} color="terminal-blue" />
-                    )}
-                    {latestAnalysis.hidden_signals && (
-                      <InsightList title="Hidden Signals" items={latestAnalysis.hidden_signals as string[]} icon={<Zap className="h-3 w-3" />} color="terminal-amber" />
-                    )}
-                  </div>
-
-                  {latestAnalysis.important_quotes && (latestAnalysis.important_quotes as string[]).length > 0 && (
-                    <div className="mt-5">
-                      <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                        <Quote className="h-3 w-3" /> Important Quotes
-                      </h4>
-                      <div className="space-y-2">
-                        {(latestAnalysis.important_quotes as string[]).map((q, i) => (
-                          <blockquote key={i} className="text-xs text-muted-foreground italic border-l-2 border-terminal-cyan/40 pl-3 py-1">
-                            "{q}"
-                          </blockquote>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-
-                {analyses && analyses.length > 1 && (
-                  <Card className="p-4 bg-card border-border card-glow">
-                    <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Analysis History</h3>
-                    <div className="space-y-2">
-                      {analyses.slice(1).map(a => (
-                        <div key={a.id} className="p-3 bg-muted rounded border border-border/50 hover:border-border transition-colors">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-mono text-xs font-semibold text-foreground">{a.quarter} {a.year}</span>
-                            <div className="flex gap-2">
-                              {a.management_tone && <ToneBadge tone={a.management_tone} />}
-                              {a.sentiment_score && <SentimentBadge score={a.sentiment_score} />}
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{a.analysis_summary}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                )}
-              </>
-            ) : (
-              <EmptyState text="No analysis yet. Go to Transcripts page → upload an earnings call → AI will analyze it." />
+              <EmptyState text="No financial data. Use Price & financials on the stock header." />
             )}
           </TabsContent>
 

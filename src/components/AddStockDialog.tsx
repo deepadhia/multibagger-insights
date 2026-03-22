@@ -54,19 +54,16 @@ export function AddStockDialog() {
     // Run fetches in background (don't block UI)
     (async () => {
       try {
-        await apiFetch("/api/prices/fetch", {
+        await apiFetch("/api/stocks/refresh-screener-data", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker }),
+          body: JSON.stringify({
+            stock_id: stockId,
+            ticker,
+            screener_slug: screenerSlug,
+          }),
         });
         queryClient.invalidateQueries({ queryKey: ["prices"] });
-      } catch (_) {}
-      try {
-        await apiFetch("/api/financials/fetch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stock_id: stockId, ticker, screener_slug: screenerSlug }),
-        });
         queryClient.invalidateQueries({ queryKey: ["financial-metrics", stockId] });
         queryClient.invalidateQueries({ queryKey: ["financial-results", stockId] });
         queryClient.invalidateQueries({ queryKey: ["shareholding", stockId] });

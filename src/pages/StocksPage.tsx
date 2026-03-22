@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useSnapshotCounts, useStocks } from "@/hooks/useStocks";
 import { AddStockDialog } from "@/components/AddStockDialog";
+import { PortfolioAiBriefButton } from "@/components/PortfolioAiBriefButton";
 import { SentimentBadge } from "@/components/SentimentBadge";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -151,15 +152,16 @@ export default function StocksPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Stocks</h1>
             <p className="text-sm text-muted-foreground font-mono mt-1">
               Track and manage your portfolio — rows are sorted by{" "}
               <span className="text-foreground/90">quarterly AI snapshots</span> (most first), then ticker.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <PortfolioAiBriefButton />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
