@@ -44,12 +44,20 @@ function getServiceAccountCredentials() {
 }
 
 function getOAuthClientConfig() {
-  if (!OAUTH_CLIENT_PATH || !fs.existsSync(OAUTH_CLIENT_PATH)) return null;
-  const raw = fs.readFileSync(OAUTH_CLIENT_PATH, "utf8");
-  const data = JSON.parse(raw);
-  const client = data.web || data.installed;
-  if (!client?.client_id || !client?.client_secret) return null;
-  return { clientId: client.client_id, clientSecret: client.client_secret };
+  if (!OAUTH_CLIENT_PATH) { console.error("[Drive Debug] OAUTH_CLIENT_PATH is empty"); return null; }
+  if (!fs.existsSync(OAUTH_CLIENT_PATH)) { console.error("[Drive Debug] client secret file NOT FOUND at:", OAUTH_CLIENT_PATH); return null; }
+  try {
+    const raw = fs.readFileSync(OAUTH_CLIENT_PATH, "utf8");
+    const data = JSON.parse(raw);
+    const client = data.web || data.installed;
+    if (!client) { console.error("[Drive Debug] client_secret.json has no 'web' or 'installed' key. Top-level keys:", Object.keys(data).join(", ")); return null; }
+    if (!client.client_id) { console.error("[Drive Debug] client_secret.json missing client_id"); return null; }
+    if (!client.client_secret) { console.error("[Drive Debug] client_secret.json missing client_secret"); return null; }
+    return { clientId: client.client_id, clientSecret: client.client_secret };
+  } catch (e) {
+    console.error("[Drive Debug] Failed to parse client_secret.json:", e.message);
+    return null;
+  }
 }
 
 function getStoredOAuthTokens() {
@@ -68,7 +76,8 @@ function getStoredOAuthTokens() {
   if (envTokens) {
     try {
       const data = JSON.parse(envTokens);
-      return data?.refresh_token ? data : null;
+      if (!data?.refresh_token) { console.error("[Drive Debug] GOOGLE_DRIVE_OAUTH_TOKENS parsed but has no refresh_token. Keys:", Object.keys(data).join(", ")); return null; }
+      return data;
     } catch (e) {
       console.error("[Drive] GOOGLE_DRIVE_OAUTH_TOKENS is not valid JSON:", e.message);
       return null;
