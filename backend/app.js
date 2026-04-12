@@ -30,11 +30,12 @@ const corsOptions = {
   origin: function (origin, callback) {
     // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+    // flexibly allow any vercel preview deployment or explicitly allowed origins
+    if (origin.endsWith(".vercel.app") || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     // Log CORS failures to help debug
-    console.warn(`CORS blocked for origin: ${origin}. Expected one of: ${allowedOrigins.join(", ")}`);
+    console.warn(`CORS blocked for origin: ${origin}. Expected one of: ${allowedOrigins.join(", ")} or any .vercel.app domain`);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
