@@ -65,7 +65,7 @@ export async function loginHandler(req, res) {
     res.cookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure,
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: COOKIE_MAX_AGE_MS,
       path: "/",
     });
@@ -81,7 +81,7 @@ export async function loginHandler(req, res) {
  */
 export function logoutHandler(_req, res) {
   const secure = cookieSecure();
-  res.clearCookie(SESSION_COOKIE_NAME, { path: "/", httpOnly: true, secure, sameSite: "lax" });
+  res.clearCookie(SESSION_COOKIE_NAME, { path: "/", httpOnly: true, secure, sameSite: process.env.NODE_ENV === "production" ? "none" : "lax" });
   res.json({ ok: true });
 }
 

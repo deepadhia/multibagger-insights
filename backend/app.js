@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import { getDataDir } from "./config/dataDir.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { stocksRouter } from "./routes/stocks.routes.js";
@@ -20,6 +21,12 @@ import { requireAuth } from "./middleware/requireAuth.js";
 
 export const app = express();
 
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
 
