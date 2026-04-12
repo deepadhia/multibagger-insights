@@ -45,6 +45,30 @@ const importPayloadSchema = z.object({
       )
       .default([]),
     raw: z.unknown().optional(),
+    // --- Signal Intelligence V6 ---
+    primary_metric_momentum: z
+      .object({
+        direction: z.enum(["accelerating", "decelerating", "stable"]),
+        reason: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
+    thesis_dependency: z
+      .object({
+        driver: z.enum(["execution", "capacity_expansion", "demand_tailwind", "pricing"]),
+        reliance: z.enum(["proven", "developing", "speculative"]),
+        risk_level: z.enum(["low", "medium", "high"]),
+      })
+      .nullable()
+      .optional(),
+    execution_quality: z
+      .object({
+        applicable: z.boolean(),
+        status: z.enum(["strong", "moderate", "weak", "NA"]),
+        reason: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
     // note: other fields are ignored by this service for determinism
   }),
 });

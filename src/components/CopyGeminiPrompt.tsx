@@ -293,7 +293,21 @@ ${strictRuleCheckSchema}
       "target_deadline": "FY__ or Q_FY__",
       "confidence": "high | medium | low"
     }
-  ]
+  ],
+  "primary_metric_momentum": {
+    "direction": "accelerating | decelerating | stable",
+    "reason": "REQUIRED: Reference specific quarter-on-quarter numbers for the primary thesis metric. State actual values (e.g., 'backlog grew +20% last quarter vs +8% this quarter'). Generic phrases like 'performance improved' are NOT acceptable."
+  },
+  "thesis_dependency": {
+    "driver": "execution | capacity_expansion | demand_tailwind | pricing",
+    "reliance": "proven | developing | speculative",
+    "risk_level": "low | medium | high"
+  },
+  "execution_quality": {
+    "applicable": true,
+    "status": "strong | moderate | weak | NA",
+    "reason": "REQUIRED: If applicable=true, state the specific conversion or delivery metric. If applicable=false, set status to NA and explain why this metric type does not apply to this business model."
+  }
 }
 
 ═══════════════════════════════════════
@@ -317,7 +331,19 @@ ANTI-BIAS & ANTI-HALLUCINATION PROTOCOLS
 12. FIELD PURITY: Never use negative fields (like \`red_flags\` or \`warnings\`) to host positive data, praise, or justifications for a lack of risk. If the quarter is clean, return an empty array []. Do not explain the absence of a risk within the risk field itself.
 13. STRICT RULE CHECK COMPLETION: You MUST include a populated \`strict_rule_check\` object. Never omit it. Every configured kill-switch and add condition from the STRICT RULE CHECK section must appear exactly once with a verdict; do not silently skip rules.
 14. INSUFFICIENT DATA ESCALATION: Count all rows in \`strict_rule_check.kill_switches\` and \`strict_rule_check.add_conditions\` (excluding when \`no_explicit_rules\` is true). If **more than 50%** of those rows have \`status\` **insufficient_data**, you MUST append an entry to \`management_analysis.red_flags\` stating that the quarter could not test most configured rules and portfolio review is blind on those checks until disclosures improve (one clear sentence).
-15. KILL SWITCH VS AGGREGATE TRUTH: If protocol (1) would suggest strong financials but a **high** kill_switch is **triggered**, you must still follow the STRICT RULE CHECK consequence binding; resolve the tension explicitly in \`action_rationale\` (rule breach vs headline numbers) — do not silently ignore the triggered rule.`;
+15. KILL SWITCH VS AGGREGATE TRUTH: If protocol (1) would suggest strong financials but a **high** kill_switch is **triggered**, you must still follow the STRICT RULE CHECK consequence binding; resolve the tension explicitly in \`action_rationale\` (rule breach vs headline numbers) — do not silently ignore the triggered rule.
+16. SIGNAL INTELLIGENCE V6 — MANDATORY FIELDS (DO NOT OMIT):
+    - \`primary_metric_momentum\`, \`thesis_dependency\`, and \`execution_quality\` are REQUIRED in every response. Null or missing fields are a validation failure.
+    - ALLOWED VALUES ARE CONTRACT-STRICT — use only the following:
+      - \`primary_metric_momentum.direction\`: accelerating | decelerating | stable
+      - \`thesis_dependency.driver\`: execution | capacity_expansion | demand_tailwind | pricing
+      - \`thesis_dependency.reliance\`: proven | developing | speculative
+      - \`thesis_dependency.risk_level\`: low | medium | high
+      - \`execution_quality.status\`: strong | moderate | weak | NA
+    - Any value outside these exact strings will be rejected by the system.
+    - \`execution_quality.applicable\` must always be a boolean (true or false), never a string.
+    - If \`execution_quality.applicable\` is false, set \`status\` to NA.
+    - Reasoning fields in \`primary_metric_momentum.reason\` and \`execution_quality.reason\` MUST reference prior quarter comparisons with specific numbers, not generic language.`;
 
   return { prompt, verificationPayload };
 }
@@ -336,7 +362,7 @@ export function CopyGeminiPrompt({ stock }: Props) {
       setCopiedKind("prompt");
       toast({
         title: "Prompt copied",
-        description: `${stock.ticker} — full V4 prompt ready to paste into Gemini.`,
+        description: `${stock.ticker} — full V6 prompt ready to paste into Gemini.`,
       });
       setTimeout(() => setCopiedKind((k) => (k === "prompt" ? null : k)), 2000);
     } catch {

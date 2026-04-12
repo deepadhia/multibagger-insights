@@ -40,6 +40,30 @@ export async function importGeminiResponseToDb({ stockId, quarter, payload }) {
       promise_updates: z.array(geminiPromiseUpdateSchema).default([]),
       new_promises: z.array(geminiNewPromiseSchema).default([]),
       raw: z.unknown().optional(),
+      // --- Signal Intelligence V6 ---
+      primary_metric_momentum: z
+        .object({
+          direction: z.enum(["accelerating", "decelerating", "stable"]),
+          reason: z.string().optional(),
+        })
+        .nullable()
+        .optional(),
+      thesis_dependency: z
+        .object({
+          driver: z.enum(["execution", "capacity_expansion", "demand_tailwind", "pricing"]),
+          reliance: z.enum(["proven", "developing", "speculative"]),
+          risk_level: z.enum(["low", "medium", "high"]),
+        })
+        .nullable()
+        .optional(),
+      execution_quality: z
+        .object({
+          applicable: z.boolean(),
+          status: z.enum(["strong", "moderate", "weak", "NA"]),
+          reason: z.string().optional(),
+        })
+        .nullable()
+        .optional(),
     })
     .parse(payload);
 
@@ -104,7 +128,47 @@ export async function importGeminiResponseToDb({ stockId, quarter, payload }) {
       );
     }
 
-    // 3) Zero-trust ledger update: only update promises that are actually pending in DB.
+    // 3) Signal Intelligence V6 — write if any of the 3 fields are present
+    if (
+      validated.primary_metric_momentum != null ||
+      validated.thesis_dependency != null ||
+      validated.execution_quality != null
+    ) {
+      await client.query(
+        `UPDATE quarterly_snapshots
+         SET primary_metric_momentum = COALESCE($1, primary_metric_momentum),
+             thesis_dependency       = COALESCE($2, thesis_dependency),
+             execution_quality       = COALESCE($3, execution_quality)
+         WHERE stock_id = $4 AND quarter = $5`,
+        [
+          validated.primary_metric_momentum ? JSON.stringify(validated.primary_metric_momentum) : null,
+          validated.thesis_dependency ? JSON.stringify(validated.thesis_dependency) : null,
+          validated.execution_quality ? JSON.stringify(validated.execution_quality) : null,
+          stockId,
+          quarter,
+        ],
+      );
+
+      // Deterministic computed flag — no LLM subjectivity
+      // Condition A: speculative reliance + weak execution (execution failure)
+      // Condition B: decelerating primary metric + not yet proven reliance (momentum deterioration)
+      const isHighRisk =
+        (
+          validated.thesis_dependency?.reliance === "speculative" &&
+          validated.execution_quality?.applicable === true &&
+          validated.execution_quality?.status === "weak"
+        ) ||
+        (
+          validated.primary_metric_momentum?.direction === "decelerating" &&
+          validated.thesis_dependency?.reliance !== "proven"
+        );
+      await client.query(
+        `UPDATE quarterly_snapshots SET is_high_risk_thesis = $1 WHERE stock_id = $2 AND quarter = $3`,
+        [isHighRisk, stockId, quarter],
+      );
+    }
+
+    // 4) Zero-trust ledger update: only update promises that are actually pending in DB.
     const pendingRes = await client.query(
       "SELECT id FROM management_promises WHERE stock_id = $1 AND status = 'pending'",
       [stockId],
