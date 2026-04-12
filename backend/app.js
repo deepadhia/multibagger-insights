@@ -21,8 +21,22 @@ import { requireAuth } from "./middleware/requireAuth.js";
 
 export const app = express();
 
+// Parse FRONTEND_URL to support comma-separated list and remove trailing slashes
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:8080")
+  .split(",")
+  .map((url) => url.trim().replace(/\/$/, ""));
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Log CORS failures to help debug
+    console.warn(`CORS blocked for origin: ${origin}. Expected one of: ${allowedOrigins.join(", ")}`);
+    return callback(new Error("Not allowed by CORS"));
+  },
   credentials: true,
 };
 
