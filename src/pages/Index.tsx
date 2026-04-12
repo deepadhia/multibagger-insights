@@ -3,6 +3,9 @@ import { useStocks, useAllAnalysis } from "@/hooks/useStocks";
 import { useAllFinancialMetrics, useAllShareholding, useAllSnapshots, useAllPromises, useAllCommitments } from "@/hooks/usePortfolioData";
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus, type Signal, type ThesisStatus } from "@/lib/signals";
 import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
+import { latestSnapshotQuarterContext } from "@/lib/snapshotPortfolioRank";
+import { SnapshotThesisBadge } from "@/components/SnapshotThesisBadge";
+import { ActionableVerdictBadges } from "@/components/ActionableVerdictBadges";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   BarChart3, TrendingUp, TrendingDown, FileText, Target, Activity,
   ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, Zap, CalendarClock,
-  Shield, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Minus, ExternalLink, Package
+  Shield, AlertTriangle, ArrowRight, ChevronUp, ChevronDown, Minus, ExternalLink, Package, ListOrdered,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -163,6 +166,29 @@ const Index = () => {
       return { stock, signals, score, thesisStatus };
     });
   }, [stocks, allFinancials, allShareholding, allSnapshots, allPromises, allCommitments, analyses]);
+
+  /** Latest quarter per stock: sort by thesis tier then confidence (#1 cohort rank after ranks:quarterly:apply). */
+  const portfolioRankRows = useMemo(() => {
+    if (!stocks?.length) return [];
+    const rows = stocks.map((stock) => {
+      const snaps = (allSnapshots || []).filter((s) => s.stock_id === stock.id);
+      const ctx = latestSnapshotQuarterContext(snaps);
+      return { stock, ctx };
+    });
+    return rows.sort((a, b) => {
+      if (a.ctx && b.ctx) {
+        if (b.ctx.consolidatedSortScore !== a.ctx.consolidatedSortScore) {
+          return b.ctx.consolidatedSortScore - a.ctx.consolidatedSortScore;
+        }
+        return a.stock.ticker.localeCompare(b.stock.ticker, undefined, { sensitivity: "base" });
+      }
+      if (a.ctx && !b.ctx) return -1;
+      if (!a.ctx && b.ctx) return 1;
+      return a.stock.ticker.localeCompare(b.stock.ticker, undefined, { sensitivity: "base" });
+    });
+  }, [stocks, allSnapshots]);
+
+  const portfolioRankCount = portfolioRankRows.filter((r) => r.ctx?.portfolioRank).length;
 
   // ── Portfolio metrics ──
   const avgScore = stockSignals.length > 0
@@ -476,6 +502,150 @@ const Index = () => {
             </div>
           </Card>
         )}
+
+        {/* ── PORTFOLIO RANK (quarterly AI cohort) ── */}
+        <Card className="p-4 bg-card border-border card-glow overflow-hidden">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ListOrdered className="h-4 w-4 text-primary" />
+              <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Portfolio rank (thesis-first, latest quarter)
+              </h3>
+            </div>
+            <p className="font-mono text-[10px] text-muted-foreground max-w-xl">
+              List order uses live <span className="text-foreground">consolidated</span> (latest quarter + trajectory). Column <strong className="text-foreground">List</strong> is the last saved batch from{" "}
+              <code className="text-primary">npm run ranks:quarterly:apply</code> (also writes <code className="text-primary">stocks.portfolio_*</code>). Re-run after new imports for conviction.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full data-grid">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-center p-2 text-muted-foreground text-[10px] uppercase tracking-wider w-14">#</th>
+                  <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Stock</th>
+                  <th className="text-center p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Quarter</th>
+                  <th className="text-center p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Thesis</th>
+                  <th
+                    className="text-center p-2 text-muted-foreground text-[10px] uppercase tracking-wider"
+                    title="Within-quarter cohort # (thesis-first)."
+                  >
+                    Q rank
+                  </th>
+                  <th
+                    className="text-center p-2 text-muted-foreground text-[10px] uppercase tracking-wider min-w-[4.5rem]"
+                    title="Saved portfolio list rank (consolidated + trajectory) from last ranks:quarterly:apply"
+                  >
+                    List
+                  </th>
+                  <th className="text-center p-2 text-muted-foreground text-[10px] uppercase tracking-wider min-w-[7rem]">
+                    Verdict
+                  </th>
+                  <th className="text-left p-2 text-muted-foreground text-[10px] uppercase tracking-wider">Sector</th>
+                </tr>
+              </thead>
+              <tbody>
+                {portfolioRankRows.map(({ stock, ctx }, idx) => (
+                  <tr
+                    key={stock.id}
+                    onClick={() => navigate(`/stocks/${stock.id}`)}
+                    className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors"
+                  >
+                    <td
+                      className="p-2 text-center font-mono text-xs text-muted-foreground tabular-nums align-top"
+                      title={
+                        ctx
+                          ? `Consolidated ${ctx.consolidatedSortScore} = latest ${ctx.sortScore} + trajectory ${ctx.trajectoryBonus >= 0 ? "+" : ""}${ctx.trajectoryBonus}`
+                          : undefined
+                      }
+                    >
+                      {idx + 1}
+                    </td>
+                    <td className="p-2">
+                      <span className="font-mono text-sm font-semibold text-primary">{stock.ticker}</span>
+                      <span className="text-[10px] text-muted-foreground ml-2">{stock.company_name}</span>
+                    </td>
+                    <td className="p-2 text-center">
+                      {ctx ? (
+                        <Badge variant="outline" className="font-mono text-[10px] text-foreground border-border">
+                          {ctx.quarter}
+                        </Badge>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="p-2 text-center">
+                      {ctx ? (
+                        <div className="flex justify-center">
+                          <SnapshotThesisBadge thesisStatus={ctx.thesisStatus} />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="p-2 text-center">
+                      {ctx?.portfolioRank ? (
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-[10px] text-primary border-primary/40"
+                          title="Rank within stocks that have a snapshot for this quarter (thesis-first)"
+                        >
+                          #{ctx.portfolioRank.rank}/{ctx.portfolioRank.cohortSize}
+                        </Badge>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground" title="Run ranks:quarterly:apply after db migrate">
+                          No rank
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-2 text-center align-top">
+                      {stock.portfolio_list_rank != null && stock.portfolio_list_cohort_size != null ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-[10px] text-terminal-green border-terminal-green/35"
+                            title={
+                              stock.portfolio_scores_updated_at
+                                ? `Saved ${new Date(stock.portfolio_scores_updated_at).toLocaleString()} · Σ ${stock.portfolio_consolidated_score ?? "—"}`
+                                : `Consolidated score ${stock.portfolio_consolidated_score ?? "—"}`
+                            }
+                          >
+                            #{stock.portfolio_list_rank}/{stock.portfolio_list_cohort_size}
+                          </Badge>
+                          {stock.portfolio_consolidated_score != null ? (
+                            <span className="text-[9px] text-muted-foreground font-mono tabular-nums">
+                              Σ {Math.round(stock.portfolio_consolidated_score)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground" title="Run ranks:quarterly:apply to persist list rank">
+                          —
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-2 text-center align-middle">
+                      {ctx ? (
+                        <ActionableVerdictBadges
+                          compact
+                          decision={ctx.verdict.decision}
+                          convictionLevel={ctx.verdict.convictionLevel}
+                        />
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="p-2 text-xs text-muted-foreground">{stock.sector || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {portfolioRankCount === 0 && stocks && stocks.length > 0 ? (
+            <p className="mt-2 text-[10px] text-terminal-amber font-mono">
+              No quarterly cohort rank on snapshots yet — apply migrations and run <code className="text-primary">npm run ranks:quarterly:apply</code> (also fills List rank + Σ on <code className="text-primary">stocks</code>).
+            </p>
+          ) : null}
+        </Card>
 
         {/* ── THESIS STATUS PER STOCK ── */}
         <Card className="p-4 bg-card border-border card-glow overflow-hidden">

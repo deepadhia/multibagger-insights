@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useManagementPromises, useQuarterlySnapshots, useStockTrackingProfile } from "@/hooks/useStocks";
-import { getMetricKeysForPrompt } from "@/lib/trackingProfileConfig";
+import { decisionRulesFromProfile, getMetricKeysForPrompt } from "@/lib/trackingProfileConfig";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, Check, Braces } from "lucide-react";
 
@@ -122,6 +122,48 @@ function buildGeminiContext(
     stock.tracking_directives ||
     "Track revenue growth, margin trajectory, free cash flow, customer/segment concentration, and balance sheet risk.";
 
+  const decisionRules = decisionRulesFromProfile(profile as Record<string, unknown> | null | undefined);
+  const reviewFrequencyLine =
+    decisionRules.review_frequency ||
+    "quarterly (default — align with your own review calendar if different)";
+  const killSwitchLines =
+    decisionRules.kill_switches.length > 0
+      ? decisionRules.kill_switches
+          .map((c, i) => `${i + 1}. [${c.severity.toUpperCase()}] ${c.rule}`)
+          .join("\n")
+      : "(None configured.) Add \"kill_switch_conditions\" (string[] or { rule, severity: high|medium }[]) — fatal vs warning de-risk triggers.";
+  const addOnLines =
+    decisionRules.add_conditions.length > 0
+      ? decisionRules.add_conditions
+          .map((c, i) => `${i + 1}. [${c.severity.toUpperCase()}] ${c.rule}`)
+          .join("\n")
+      : "(None configured.) Add \"add_on_conditions\" for explicit upgrade / higher-conviction triggers (default severity medium).";
+  const hasExplicitRules =
+    decisionRules.kill_switches.length > 0 || decisionRules.add_conditions.length > 0;
+
+  const strictRuleCheckSchema = `  "strict_rule_check": {
+    "no_explicit_rules": ${!hasExplicitRules},
+    "review_frequency_acknowledged": ${JSON.stringify(reviewFrequencyLine)},
+    "overall_status": "pass | warning | fail",
+    "overall_status_rationale": "One sentence: how kill_switches and add_conditions aggregate (see mandate below)",
+    "kill_switches": [
+      {
+        "condition": "Exact rule text including [HIGH]/[MEDIUM] from this prompt",
+        "severity": "high | medium",
+        "status": "triggered | not_triggered | insufficient_data",
+        "evidence": "Verbatim excerpt from transcript/presentation, or state what was NOT DISCLOSED"
+      }
+    ],
+    "add_conditions": [
+      {
+        "condition": "Exact rule text from the Add conditions list",
+        "severity": "high | medium",
+        "status": "triggered | not_triggered | insufficient_data",
+        "evidence": "Verbatim excerpt from transcript/presentation, or state what was NOT DISCLOSED"
+      }
+    ]
+  },`;
+
   const verificationPayload = {
     generated_at: new Date().toISOString(),
     ticker: stock.ticker,
@@ -142,6 +184,11 @@ function buildGeminiContext(
       kept: kept.length,
       broken: broken.length,
     },
+    decision_rules: {
+      review_frequency: decisionRules.review_frequency,
+      kill_switches: decisionRules.kill_switches,
+      add_conditions: decisionRules.add_conditions,
+    },
     stock_tracking_profile_config: profile ?? null,
   };
 
@@ -161,6 +208,24 @@ PARAMETERIZED INPUTS
 **MANDATORY METRICS TO TRACK:** ${mandatoryMetricsReadable}
 
 **PRIMARY THESIS METRIC TO EXTRACT:** ${primaryMetricLabel}
+
+═══════════════════════════════════════
+STRICT RULE CHECK (MANDATORY — DO NOT SKIP)
+═══════════════════════════════════════
+**Review frequency:** ${reviewFrequencyLine}
+
+**Kill switch conditions** (thesis break / de-risk — evaluate against this quarter's materials + rolling context):
+${killSwitchLines}
+
+**Add / higher-conviction conditions** (when you would increase sizing or conviction):
+${addOnLines}
+
+**MANDATE:**
+- For **every** configured line item above (numbered), you MUST emit one row in \`strict_rule_check.kill_switches\` or \`strict_rule_check.add_conditions\` with the **same rule text** (include the [HIGH]/[MEDIUM] tag in \`condition\`), matching \`severity\`, \`status\` = triggered | not_triggered | insufficient_data, and \`evidence\`.
+- Set \`strict_rule_check.overall_status\`: **fail** if any **kill_switch** with \`severity\` **high** has \`status\` **triggered**; else **warning** if any **kill_switch** with \`severity\` **medium** has \`status\` **triggered**, OR if more than half of all kill+add rule rows are **insufficient_data** (rule-testing blind spot); else **pass**. Add_conditions being **triggered** is usually positive — do not by itself set **fail**. Explain briefly in \`overall_status_rationale\`.
+- **Consequence binding (configured kill switches only):** If any **high**-severity kill_switch is **triggered**, you MUST set \`actionable_verdict.decision\` to **CUT POSITION** unless \`action_rationale\` cites **strong counter-evidence** (verbatim) proving the rule is not breached — this exception must be rare and explicit. If any **medium**-severity kill_switch is **triggered**, you MUST **NOT** output **BUILD POSITION**; use **WAIT AND WATCH** or **CUT POSITION** and explain.
+- If **no** explicit rules are configured, set \`strict_rule_check.no_explicit_rules\` to true, \`overall_status\` to **pass**, use **empty arrays** for kill_switches and add_conditions, and in \`actionable_verdict.action_rationale\` you MUST still name **one** concrete scenario that would **invalidate** the thesis and **one** that would **materially strengthen** it (measurable where possible).
+- Use \`insufficient_data\` when the transcript does not allow a fair test; say what is missing in \`evidence\`.
 
 ═══════════════════════════════════════
 HISTORICAL CONTEXT (ROLLING YTD LEDGER)
@@ -199,6 +264,7 @@ Return a SINGLE JSON object exactly matching this schema. No prose. No markdown 
     ]
   },
   "metrics": ${JSON.stringify(metricsSchema, null, 4)},
+${strictRuleCheckSchema}
   "signals": {
     "bullish": ["Positive demand, margin, or execution indicators tied to the thesis"],
     "warnings": ["Identify customer/geo concentration (>25% from 1-2 sources), RM inflation, pricing pressure, or delayed timelines"],
@@ -241,14 +307,17 @@ ANTI-BIAS & ANTI-HALLUCINATION PROTOCOLS
 5. EVIDENCE INTEGRITY: Every string placed in an "evidence" field MUST be a verbatim excerpt from the provided text. Never mix your own words with the evidence string.
 6. SILENT FAILURE DETECTION: Cross-reference EVERY promise ID from the PENDING PROMISE LEDGER provided in this prompt. If a target deadline has arrived and the text does not confirm its completion, mark it "broken" with the evidence: "Silent failure - deadline passed without management confirmation."
 7. THE ACTIONABLE VERDICT PROTOCOL:
-   - BUILD POSITION: Only recommend this if the thesis is strengthening, margins are expanding, and execution is flawless. Conviction must be HIGH.
-   - WAIT AND WATCH: Recommend this if the thesis is evolving, if there are short-term headwinds (e.g., temporary margin compression), or if customer concentration risk is exceptionally high. Clearly state what metric must be resolved to upgrade to a "Build."
-   - CUT POSITION: Recommend this only if there is a confirmed structural thesis break (e.g., capital misallocation, massive debt spikes to fund non-core ventures, or structural margin collapse).
+   - BUILD POSITION: Only recommend this if the thesis is strengthening, margins are expanding, and execution is flawless. Conviction must be HIGH — and **no** configured kill_switch row may be **triggered** (see STRICT RULE CHECK mandate).
+   - WAIT AND WATCH: Recommend this if the thesis is evolving, if there are short-term headwinds (e.g., temporary margin compression), if customer concentration risk is exceptionally high, or if a **medium** kill_switch triggered. Clearly state what metric must be resolved to upgrade to a "Build."
+   - CUT POSITION: Use for confirmed structural thesis break **or** when a **high**-severity kill_switch is **triggered** per the STRICT RULE CHECK mandate (unless rare counter-evidence exception is documented in action_rationale).
 8. NEVER hallucinate numbers. If you cannot find a value explicitly in the transcript/presentation, set the metric value to "NOT DISCLOSED" and record that omission in management_analysis.dodged_questions_or_omissions.
 9. STRICT PROMISE REFERENCING: When updating promises in the promise_updates array, you MAY ONLY use IDs that are explicitly listed in the PENDING PROMISE LEDGER provided in this prompt. Do not invent, recall, or hallucinate UUIDs.
 10. NEW PROMISE ISOLATION: Do not assign IDs to new_promises. Only extract promise_text, target_deadline, and confidence.
 11. NO GHOST UPDATES: If you cannot find evidence regarding a pending promise in the current quarter, keep it as "pending". Do not assume it is broken unless the text confirms failure after the deadline.
-12. FIELD PURITY: Never use negative fields (like \`red_flags\` or \`warnings\`) to host positive data, praise, or justifications for a lack of risk. If the quarter is clean, return an empty array []. Do not explain the absence of a risk within the risk field itself.`;
+12. FIELD PURITY: Never use negative fields (like \`red_flags\` or \`warnings\`) to host positive data, praise, or justifications for a lack of risk. If the quarter is clean, return an empty array []. Do not explain the absence of a risk within the risk field itself.
+13. STRICT RULE CHECK COMPLETION: You MUST include a populated \`strict_rule_check\` object. Never omit it. Every configured kill-switch and add condition from the STRICT RULE CHECK section must appear exactly once with a verdict; do not silently skip rules.
+14. INSUFFICIENT DATA ESCALATION: Count all rows in \`strict_rule_check.kill_switches\` and \`strict_rule_check.add_conditions\` (excluding when \`no_explicit_rules\` is true). If **more than 50%** of those rows have \`status\` **insufficient_data**, you MUST append an entry to \`management_analysis.red_flags\` stating that the quarter could not test most configured rules and portfolio review is blind on those checks until disclosures improve (one clear sentence).
+15. KILL SWITCH VS AGGREGATE TRUTH: If protocol (1) would suggest strong financials but a **high** kill_switch is **triggered**, you must still follow the STRICT RULE CHECK consequence binding; resolve the tension explicitly in \`action_rationale\` (rule breach vs headline numbers) — do not silently ignore the triggered rule.`;
 
   return { prompt, verificationPayload };
 }

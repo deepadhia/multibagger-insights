@@ -1,5 +1,7 @@
 import type { Signal, ThesisStatus } from "@/lib/signals";
 import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
+import type { SnapshotRowLike } from "@/lib/snapshotPortfolioRank";
+import { buildPortfolioRankingBlock, type StockWithPortfolioFields } from "@/lib/buildPortfolioRankingExport";
 
 export type StockRow = {
   id: string;
@@ -10,6 +12,12 @@ export type StockRow = {
   buy_price: number | null;
   next_results_date?: string | null;
   investment_thesis?: string | null;
+  portfolio_list_rank?: number | null;
+  portfolio_list_cohort_size?: number | null;
+  portfolio_consolidated_score?: number | null;
+  portfolio_trajectory_bonus?: number | null;
+  portfolio_latest_quarter_sort_score?: number | null;
+  portfolio_scores_updated_at?: string | null;
 };
 
 type AnalysisLite = { sentiment_score: number | null; management_tone: string | null } | null | undefined;
@@ -78,6 +86,11 @@ export function buildPortfolioAiExport(options: {
 
   const filteredStocks = stocks.filter((s) => stockIdsWithQuarterlyJson.has(s.id));
   const filteredSignals = stockSignals.filter((ss) => stockIdsWithQuarterlyJson.has(ss.stock.id));
+
+  const portfolio_ranking = buildPortfolioRankingBlock(
+    filteredStocks as StockWithPortfolioFields[],
+    allSnapshots as SnapshotRowLike[],
+  );
 
   const byStatus = {
     Strengthening: [] as string[],
@@ -171,6 +184,8 @@ export function buildPortfolioAiExport(options: {
       "4) 5–7 bullet next actions (process-level, not specific buy/sell instructions).",
       "Acknowledge uncertainty and that this is my research notes, not verified facts.",
     ].join(" "),
+
+    portfolio_ranking,
 
     portfolio_summary: {
       stock_count: filteredStocks.length,

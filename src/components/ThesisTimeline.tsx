@@ -7,6 +7,9 @@ interface TimelineEvent {
   type: "snapshot" | "promise_kept" | "promise_broken" | "promise_new";
   content: string;
   severity?: "bullish" | "bearish" | "neutral";
+  /** Filled for snapshot rows when `npm run ranks:quarterly:apply` has been run */
+  portfolio_rank?: number | null;
+  portfolio_cohort_size?: number | null;
 }
 
 interface Props {
@@ -126,11 +129,24 @@ export function ThesisTimeline({ snapshots, promises }: Props) {
                       <div key={i} className={`flex items-start gap-2 p-2 rounded border bg-muted/20 ${color}`}>
                         <Icon className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                         <div className="min-w-0">
-                          <span className="font-mono text-[9px] uppercase tracking-wider opacity-60">
-                            {event.type === "snapshot" ? "Quarter Review" :
-                             event.type === "promise_kept" ? "Promise Kept" :
-                             event.type === "promise_broken" ? "Promise Broken" : "New Commitment"}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-[9px] uppercase tracking-wider opacity-60">
+                              {event.type === "snapshot" ? "Quarter Review" :
+                               event.type === "promise_kept" ? "Promise Kept" :
+                               event.type === "promise_broken" ? "Promise Broken" : "New Commitment"}
+                            </span>
+                            {event.type === "snapshot" &&
+                              event.portfolio_rank != null &&
+                              event.portfolio_cohort_size != null && (
+                                <Badge
+                                  variant="outline"
+                                  className="font-mono text-[9px] h-5 px-1.5 text-primary border-primary/35"
+                                  title="Portfolio rank for this quarter (#1 = best score in cohort)"
+                                >
+                                  #{event.portfolio_rank}/{event.portfolio_cohort_size}
+                                </Badge>
+                              )}
+                          </div>
                           <p className="text-xs text-foreground/80 leading-relaxed">{event.content}</p>
                         </div>
                       </div>

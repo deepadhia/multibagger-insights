@@ -415,6 +415,9 @@ export type Database = {
           dodged_questions: Json | null
           id: string
           metrics: Json | null
+          portfolio_cohort_size: number | null
+          portfolio_rank: number | null
+          portfolio_rank_score: number | null
           quarter: string
           raw_ai_output: Json | null
           red_flags: Json | null
@@ -431,6 +434,9 @@ export type Database = {
           dodged_questions?: Json | null
           id?: string
           metrics?: Json | null
+          portfolio_cohort_size?: number | null
+          portfolio_rank?: number | null
+          portfolio_rank_score?: number | null
           quarter: string
           raw_ai_output?: Json | null
           red_flags?: Json | null
@@ -447,6 +453,9 @@ export type Database = {
           dodged_questions?: Json | null
           id?: string
           metrics?: Json | null
+          portfolio_cohort_size?: number | null
+          portfolio_rank?: number | null
+          portfolio_rank_score?: number | null
           quarter?: string
           raw_ai_output?: Json | null
           red_flags?: Json | null
@@ -577,6 +586,12 @@ export type Database = {
           investment_thesis: string | null
           metric_keys: Json | null
           next_results_date: string | null
+          portfolio_consolidated_score: number | null
+          portfolio_latest_quarter_sort_score: number | null
+          portfolio_list_cohort_size: number | null
+          portfolio_list_rank: number | null
+          portfolio_scores_updated_at: string | null
+          portfolio_trajectory_bonus: number | null
           screener_slug: string | null
           sector: string | null
           ticker: string
@@ -591,6 +606,12 @@ export type Database = {
           investment_thesis?: string | null
           metric_keys?: Json | null
           next_results_date?: string | null
+          portfolio_consolidated_score?: number | null
+          portfolio_latest_quarter_sort_score?: number | null
+          portfolio_list_cohort_size?: number | null
+          portfolio_list_rank?: number | null
+          portfolio_scores_updated_at?: string | null
+          portfolio_trajectory_bonus?: number | null
           screener_slug?: string | null
           sector?: string | null
           ticker: string
@@ -605,6 +626,12 @@ export type Database = {
           investment_thesis?: string | null
           metric_keys?: Json | null
           next_results_date?: string | null
+          portfolio_consolidated_score?: number | null
+          portfolio_latest_quarter_sort_score?: number | null
+          portfolio_list_cohort_size?: number | null
+          portfolio_list_rank?: number | null
+          portfolio_scores_updated_at?: string | null
+          portfolio_trajectory_bonus?: number | null
           screener_slug?: string | null
           sector?: string | null
           ticker?: string

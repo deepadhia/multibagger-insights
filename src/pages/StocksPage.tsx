@@ -1,6 +1,10 @@
 import { useMemo, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useSnapshotCounts, useStocks } from "@/hooks/useStocks";
+import { useAllSnapshots } from "@/hooks/usePortfolioData";
+import { latestSnapshotQuarterContext } from "@/lib/snapshotPortfolioRank";
+import { SnapshotThesisBadge } from "@/components/SnapshotThesisBadge";
+import { ActionableVerdictBadges } from "@/components/ActionableVerdictBadges";
 import { AddStockDialog } from "@/components/AddStockDialog";
 import { PortfolioAiBriefButton } from "@/components/PortfolioAiBriefButton";
 import { SentimentBadge } from "@/components/SentimentBadge";
@@ -23,6 +27,7 @@ import {
 export default function StocksPage() {
   const { data: stocks, isLoading } = useStocks();
   const { data: snapshotCounts } = useSnapshotCounts();
+  const { data: allSnapshots } = useAllSnapshots();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -137,17 +142,35 @@ export default function StocksPage() {
     }
   };
 
-  /** Most quarterly AI snapshots first; ties → alphabetical by ticker. */
+  const snapshotCtxByStockId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof latestSnapshotQuarterContext>>();
+    if (!stocks?.length) return map;
+    for (const stock of stocks) {
+      const snaps = (allSnapshots || []).filter((s) => s.stock_id === stock.id);
+      map.set(stock.id, latestSnapshotQuarterContext(snaps));
+    }
+    return map;
+  }, [stocks, allSnapshots]);
+
+  /** Thesis tier → confidence on latest quarter, then snapshot count, then ticker. */
   const sortedStocks = useMemo(() => {
     if (!stocks) return [];
     const counts = snapshotCounts || {};
     return [...stocks].sort((a, b) => {
-      const ca = counts[a.id] || 0;
-      const cb = counts[b.id] || 0;
-      if (cb !== ca) return cb - ca;
+      const ca = snapshotCtxByStockId.get(a.id) ?? null;
+      const cb = snapshotCtxByStockId.get(b.id) ?? null;
+      if (ca && cb) {
+        if (cb.consolidatedSortScore !== ca.consolidatedSortScore) {
+          return cb.consolidatedSortScore - ca.consolidatedSortScore;
+        }
+      } else if (ca && !cb) return -1;
+      else if (!ca && cb) return 1;
+      const cna = counts[a.id] || 0;
+      const cnb = counts[b.id] || 0;
+      if (cnb !== cna) return cnb - cna;
       return (a.ticker || "").localeCompare(b.ticker || "", undefined, { sensitivity: "base" });
     });
-  }, [stocks, snapshotCounts]);
+  }, [stocks, snapshotCounts, snapshotCtxByStockId]);
 
   return (
     <DashboardLayout>
@@ -156,8 +179,8 @@ export default function StocksPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-mono font-bold text-primary terminal-glow">Stocks</h1>
             <p className="text-sm text-muted-foreground font-mono mt-1">
-              Track and manage your portfolio — rows are sorted by{" "}
-              <span className="text-foreground/90">quarterly AI snapshots</span> (most first), then ticker.
+              Rows sort by <span className="text-foreground/90">consolidated score</span> — latest quarter thesis + confidence, plus trajectory when thesis improves or holds across recent quarters. Cohort #k/n after{" "}
+              <code className="text-primary text-xs">npm run ranks:quarterly:apply</code>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -284,7 +307,19 @@ export default function StocksPage() {
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Ticker</th>
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Sector</th>
                   <th className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider">Category</th>
-                  <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider" title="Rows sorted by this column (desc)">
+                  <th
+                    className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider"
+                    title="Thesis + cohort rank (#1 = best, thesis-first). Filled by ranks:quarterly:apply"
+                  >
+                    Thesis / rank
+                  </th>
+                  <th
+                    className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider min-w-[8rem]"
+                    title="actionable_verdict from latest quarterly Gemini import"
+                  >
+                    Verdict
+                  </th>
+                  <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider" title="Count of imported quarterly snapshots">
                     Snapshots
                   </th>
                   <th className="text-center p-3 text-muted-foreground text-xs uppercase tracking-wider">Next Results</th>
@@ -295,13 +330,15 @@ export default function StocksPage() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
                 ) : !stocks?.length ? (
-                  <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
+                  <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">No stocks added yet.</td></tr>
                 ) : (
                   sortedStocks.map((stock) => {
                     const analysis = latestAnalysis?.[stock.id];
                     const snapN = snapshotCounts?.[stock.id] ?? 0;
+                    const snapCtx = snapshotCtxByStockId.get(stock.id) ?? null;
+                    const pr = snapCtx?.portfolioRank ?? null;
                     return (
                       <tr
                         key={stock.id}
@@ -315,6 +352,61 @@ export default function StocksPage() {
                           <Badge variant="outline" className={getCategoryColor(stock.category)}>
                             {stock.category}
                           </Badge>
+                        </td>
+                        <td className="p-3 text-center">
+                          {snapCtx ? (
+                            <div className="flex flex-col items-center gap-1.5 min-w-[7rem]">
+                              <SnapshotThesisBadge thesisStatus={snapCtx.thesisStatus} />
+                              <span className="text-[9px] text-muted-foreground font-mono">{snapCtx.quarter}</span>
+                              {pr ? (
+                                <Badge
+                                  variant="outline"
+                                  className="font-mono text-[10px] text-primary border-primary/40"
+                                  title="Cohort rank for this quarter (thesis-first ordering)"
+                                >
+                                  #{pr.rank}/{pr.cohortSize}
+                                </Badge>
+                              ) : (
+                                <span className="text-[9px] text-muted-foreground font-mono">No cohort rank</span>
+                              )}
+                              {snapCtx.trajectoryBonus !== 0 ? (
+                                <span
+                                  className={`text-[9px] font-mono tabular-nums ${
+                                    snapCtx.trajectoryBonus > 0 ? "text-terminal-green" : "text-terminal-amber"
+                                  }`}
+                                  title="Trajectory bonus from last few quarters (thesis tier path)"
+                                >
+                                  {snapCtx.trajectoryBonus > 0 ? "+" : ""}
+                                  {snapCtx.trajectoryBonus} momentum
+                                </span>
+                              ) : null}
+                              {stock.portfolio_list_rank != null && stock.portfolio_list_cohort_size != null ? (
+                                <Badge
+                                  variant="outline"
+                                  className="font-mono text-[9px] text-terminal-green border-terminal-green/35 max-w-[9rem] whitespace-normal text-center leading-tight"
+                                  title={
+                                    stock.portfolio_scores_updated_at
+                                      ? `Saved list rank · ${new Date(stock.portfolio_scores_updated_at).toLocaleString()} · run ranks:quarterly:apply to refresh`
+                                      : "Saved list rank — run ranks:quarterly:apply to refresh"
+                                  }
+                                >
+                                  List #{stock.portfolio_list_rank}/{stock.portfolio_list_cohort_size}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center align-middle">
+                          {snapCtx ? (
+                            <ActionableVerdictBadges
+                              decision={snapCtx.verdict.decision}
+                              convictionLevel={snapCtx.verdict.convictionLevel}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="p-3 text-center font-mono text-xs text-muted-foreground tabular-nums">
                           {snapN}

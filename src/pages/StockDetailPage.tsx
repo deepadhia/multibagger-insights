@@ -21,6 +21,7 @@ import { ThesisScore } from "@/components/ThesisScore";
 import { ThesisTimeline } from "@/components/ThesisTimeline";
 import { ManagementCredibility } from "@/components/ManagementCredibility";
 import { ThesisDriftAlert } from "@/components/ThesisDriftAlert";
+import { SnapshotThesisBadge } from "@/components/SnapshotThesisBadge";
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus } from "@/lib/signals";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
@@ -44,6 +45,27 @@ const chartTooltipStyle = {
   fontSize: 11,
   color: "hsl(210 20% 90%)",
 };
+
+/** Google Drive `uc?export=download` when local `/files/...` is missing (Drive-only rows). */
+function driveDirectDownloadUrl(f: {
+  drive_file_id?: string | null;
+  drive_web_link?: string | null;
+}): string | null {
+  const fid = typeof f.drive_file_id === "string" && f.drive_file_id.trim() ? f.drive_file_id.trim() : null;
+  if (fid) {
+    return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fid)}`;
+  }
+  const link = typeof f.drive_web_link === "string" ? f.drive_web_link.trim() : "";
+  if (link) {
+    const fromPath = link.match(/\/file\/d\/([^/?#]+)/);
+    const fromQuery = link.match(/[?&]id=([^&]+)/);
+    const extracted = fromPath?.[1] ?? fromQuery?.[1];
+    if (extracted) {
+      return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(extracted)}`;
+    }
+  }
+  return null;
+}
 
 export default function StockDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -819,9 +841,14 @@ export default function StockDetailPage() {
                     <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Latest quarter preview</p>
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className="font-mono text-xs font-semibold">{snapshots[0].quarter}</span>
-                      {snapshots[0].thesis_status && (
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {snapshots[0].thesis_status}
+                      <SnapshotThesisBadge thesisStatus={snapshots[0].thesis_status} />
+                      {snapshots[0].portfolio_rank != null && snapshots[0].portfolio_cohort_size != null && (
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-[10px] text-primary border-primary/40"
+                          title="Cohort rank for this quarter (thesis-first, then confidence)"
+                        >
+                          #{snapshots[0].portfolio_rank}/{snapshots[0].portfolio_cohort_size}
                         </Badge>
                       )}
                     </div>
@@ -1424,7 +1451,11 @@ export default function StockDetailPage() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {items.map((f: { quarter?: string; category?: string; label?: string; filename: string; announcement_date?: string; url: string; drive_web_link?: string; drive_file_id?: string }) => (
+                                    {items.map((f: { quarter?: string; category?: string; label?: string; filename: string; announcement_date?: string; url?: string | null; drive_web_link?: string; drive_file_id?: string }) => {
+                                      const driveDl = driveDirectDownloadUrl(f);
+                                      const hasLocalFile = Boolean(f.url);
+                                      const canDownload = hasLocalFile || Boolean(driveDl);
+                                      return (
                                       <tr key={`${f.quarter ?? q}-${f.filename}`} className="border-b border-border/50 hover:bg-muted/30">
                                         <td className="py-1.5 pr-2">
                                           <Badge variant="outline" className="font-mono text-[10px]">
@@ -1450,18 +1481,23 @@ export default function StockDetailPage() {
                                           >
                                             <ExternalLink className="h-3 w-3 mr-1" /> Open
                                           </Button>
-                                          {f.url && (
+                                          {canDownload && (
                                             <Button
                                               variant="ghost"
                                               size="sm"
                                               className="font-mono text-xs h-6 ml-1"
+                                              title={hasLocalFile ? "Download from app server" : "Download via Google Drive (opens new tab)"}
                                               onClick={() => {
-                                                const link = document.createElement("a");
-                                                link.href = f.url;
-                                                link.download = f.filename || undefined;
-                                                document.body.appendChild(link);
-                                                link.click();
-                                                document.body.removeChild(link);
+                                                if (hasLocalFile && f.url) {
+                                                  const link = document.createElement("a");
+                                                  link.href = f.url;
+                                                  link.download = f.filename || undefined;
+                                                  document.body.appendChild(link);
+                                                  link.click();
+                                                  document.body.removeChild(link);
+                                                } else if (driveDl) {
+                                                  window.open(driveDl, "_blank", "noopener,noreferrer");
+                                                }
                                               }}
                                             >
                                               Download
@@ -1492,7 +1528,8 @@ export default function StockDetailPage() {
                                           </Button>
                                         </td>
                                       </tr>
-                                    ))}
+                                    );
+                                    })}
                                   </tbody>
                                 </table>
                                 </div>

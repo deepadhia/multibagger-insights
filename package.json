@@ -19,7 +19,9 @@
     "server:dev": "node --env-file=.env.local backend/server.js",
     "db:migrate": "node backend/migrate.js",
     "db:seed": "node backend/seed.js",
-    "db:seed:admin": "node backend/seed-admin.js"
+    "db:seed:admin": "node backend/seed-admin.js",
+    "ranks:quarterly": "node --env-file=.env.local backend/scripts/compute-quarterly-ranks.js",
+    "ranks:quarterly:apply": "node --env-file=.env.local backend/scripts/compute-quarterly-ranks.js --apply"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -117,3 +117,80 @@ export function getMetricKeysForPrompt(
 
   return [...defaultKeys];
 }
+
+export type RuleSeverity = "high" | "medium";
+
+/** One kill-switch or add-on line after normalizing profile JSON. */
+export type DecisionRuleEntry = {
+  rule: string;
+  severity: RuleSeverity;
+};
+
+function normalizeRuleSeverity(raw: unknown, fallback: RuleSeverity): RuleSeverity {
+  const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (s === "high") return "high";
+  if (s === "medium" || s === "low") return "medium";
+  return fallback;
+}
+
+/**
+ * Accepts string[] (legacy) or objects { rule, severity? } / { condition, severity? }.
+ * Legacy strings: kill defaults to high, add defaults to medium.
+ */
+function parseDecisionRuleList(raw: unknown, defaultSeverity: RuleSeverity): DecisionRuleEntry[] {
+  if (raw === undefined || raw === null) return [];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw.trim()) as unknown;
+      return parseDecisionRuleList(parsed, defaultSeverity);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  const out: DecisionRuleEntry[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      const t = item.trim();
+      if (t) out.push({ rule: t, severity: defaultSeverity });
+      continue;
+    }
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      const o = item as Record<string, unknown>;
+      const text =
+        (typeof o.rule === "string" && o.rule.trim()) ||
+        (typeof o.condition === "string" && o.condition.trim()) ||
+        "";
+      if (!text) continue;
+      out.push({
+        rule: text,
+        severity: normalizeRuleSeverity(o.severity, defaultSeverity),
+      });
+    }
+  }
+  return out;
+}
+
+/** Kill / add rules for quarterly prompt injection (snake_case or camelCase in JSON). */
+export function decisionRulesFromProfile(profile: TrackingProfileConfig): {
+  kill_switches: DecisionRuleEntry[];
+  add_conditions: DecisionRuleEntry[];
+  review_frequency: string | null;
+} {
+  if (!profile || typeof profile !== "object") {
+    return { kill_switches: [], add_conditions: [], review_frequency: null };
+  }
+  const p = profile as Record<string, unknown>;
+  const killRaw = p.kill_switch_conditions ?? p.killSwitchConditions;
+  const addRaw = p.add_on_conditions ?? p.addOnConditions;
+  const freqRaw = p.review_frequency ?? p.reviewFrequency;
+
+  const kill_switches = parseDecisionRuleList(killRaw, "high");
+  const add_conditions = parseDecisionRuleList(addRaw, "medium");
+
+  return {
+    kill_switches,
+    add_conditions,
+    review_frequency: typeof freqRaw === "string" && freqRaw.trim() ? freqRaw.trim() : null,
+  };
+}

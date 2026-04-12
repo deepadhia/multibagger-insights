@@ -19,7 +19,9 @@ import {
 import { detectMultibaggerSignals, calculateThesisScore, getThesisStatus } from "@/lib/signals";
 import { sortSnapshotsByQuarterDesc } from "@/lib/quarterSort";
 import { buildPortfolioAiExport, type StockRow } from "@/lib/buildPortfolioAiExport";
-import { Sparkles, ChevronDown, Loader2, FileJson } from "lucide-react";
+import { buildStandaloneRankingClipboardPayload } from "@/lib/buildPortfolioRankingExport";
+import type { SnapshotRowLike } from "@/lib/snapshotPortfolioRank";
+import { Sparkles, ChevronDown, Loader2, FileJson, ListOrdered } from "lucide-react";
 
 export function PortfolioAiBriefButton() {
   const { data: stocks, isLoading: loadingStocks } = useStocks();
@@ -30,7 +32,7 @@ export function PortfolioAiBriefButton() {
   const { data: allPromises, isLoading: loadingPr } = useAllPromises();
   const { data: allCommitments, isLoading: loadingCo } = useAllCommitments();
   const { toast } = useToast();
-  const [copying, setCopying] = useState<"summary" | "full" | null>(null);
+  const [copying, setCopying] = useState<"summary" | "full" | "ranking" | null>(null);
 
   const loading =
     loadingStocks ||
@@ -135,6 +137,42 @@ export function PortfolioAiBriefButton() {
     }
   };
 
+  const copyRankingOnly = async () => {
+    if (!stocks?.length) {
+      toast({ title: "No stocks", description: "Add stocks before exporting.", variant: "destructive" });
+      return;
+    }
+    if (stocksWithQuarterlyJsonCount === 0) {
+      toast({
+        title: "Nothing to export",
+        description: "Import at least one quarterly AI snapshot on a stock first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setCopying("ranking");
+    try {
+      const payload = buildStandaloneRankingClipboardPayload(
+        stocks as StockRow[],
+        (allSnapshots || []) as SnapshotRowLike[],
+      );
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      const n = payload.leaderboard.length;
+      toast({
+        title: "Ranking copied",
+        description: `${n} name${n === 1 ? "" : "s"} — live order, rationale, and top consolidated pick.`,
+      });
+    } catch (e) {
+      toast({
+        title: "Copy failed",
+        description: e instanceof Error ? e.message : "Clipboard unavailable",
+        variant: "destructive",
+      });
+    } finally {
+      setCopying(null);
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -164,6 +202,17 @@ export function PortfolioAiBriefButton() {
           </span>
           <span className="text-muted-foreground font-normal leading-snug">
             Only stocks with imported quarterly snapshots. Thesis scores, signals, summaries — no raw Gemini JSON.
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="text-xs flex-col items-start gap-1 py-2 cursor-pointer"
+          onClick={() => void copyRankingOnly()}
+        >
+          <span className="font-semibold text-foreground flex items-center gap-1.5">
+            <ListOrdered className="h-3 w-3" /> Ranking leaderboard only
+          </span>
+          <span className="text-muted-foreground font-normal leading-snug">
+            Live order, per-stock “why” (thesis, trajectory, verdict), saved list batch fields, and highest consolidated pick — compact JSON.
           </span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

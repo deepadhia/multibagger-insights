@@ -226,6 +226,15 @@ export function SnapshotsTab({ stockId }: Props) {
                         Score: {confidenceScore}
                       </Badge>
                     )}
+                    {snap.portfolio_rank != null && snap.portfolio_cohort_size != null && (
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px] shrink-0 whitespace-nowrap text-primary border-primary/40"
+                        title="Cohort rank for this quarter (thesis strengthening→broken, then confidence). Refresh: npm run ranks:quarterly:apply"
+                      >
+                        Portfolio #{snap.portfolio_rank}/{snap.portfolio_cohort_size}
+                      </Badge>
+                    )}
                     {actionDecision && (
                       <Badge
                         variant="outline"
