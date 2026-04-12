@@ -7,6 +7,11 @@ app.listen(PORT, () => {
   console.log("--- Backend env ---");
   console.log("  Database: configured (DATABASE_URL set)");
   console.log(`  Port: ${PORT}`);
+  // Drive debug — remove once working
+  console.log("[Drive Debug] GOOGLE_DRIVE_FOLDER_ID:", process.env.GOOGLE_DRIVE_FOLDER_ID ? "set" : "MISSING");
+  console.log("[Drive Debug] GOOGLE_OAUTH_CLIENT_JSON_PATH:", process.env.GOOGLE_OAUTH_CLIENT_JSON_PATH || "MISSING");
+  console.log("[Drive Debug] GOOGLE_DRIVE_OAUTH_TOKENS:", process.env.GOOGLE_DRIVE_OAUTH_TOKENS ? "set (length=" + process.env.GOOGLE_DRIVE_OAUTH_TOKENS.length + ")" : "MISSING");
+  console.log("[Drive Debug] GOOGLE_SERVICE_ACCOUNT_JSON_PATH:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH || "not set");
   console.log(
     isDriveConfigured()
       ? "  Google Drive: configured"
