@@ -53,14 +53,28 @@ function getOAuthClientConfig() {
 }
 
 function getStoredOAuthTokens() {
-  if (!fs.existsSync(OAUTH_TOKENS_PATH)) return null;
-  try {
-    const raw = fs.readFileSync(OAUTH_TOKENS_PATH, "utf8");
-    const data = JSON.parse(raw);
-    return data?.refresh_token ? data : null;
-  } catch {
-    return null;
+  // 1) Try file (local dev)
+  if (fs.existsSync(OAUTH_TOKENS_PATH)) {
+    try {
+      const raw = fs.readFileSync(OAUTH_TOKENS_PATH, "utf8");
+      const data = JSON.parse(raw);
+      return data?.refresh_token ? data : null;
+    } catch {
+      return null;
+    }
   }
+  // 2) Fall back to env var (production/Render — set GOOGLE_DRIVE_OAUTH_TOKENS to the full JSON)
+  const envTokens = process.env.GOOGLE_DRIVE_OAUTH_TOKENS;
+  if (envTokens) {
+    try {
+      const data = JSON.parse(envTokens);
+      return data?.refresh_token ? data : null;
+    } catch (e) {
+      console.error("[Drive] GOOGLE_DRIVE_OAUTH_TOKENS is not valid JSON:", e.message);
+      return null;
+    }
+  }
+  return null;
 }
 
 function isOAuthConfigured() {
