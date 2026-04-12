@@ -28,6 +28,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend,
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
+import { apiUrl } from "@/lib/apiFetch";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiUrl } from "@/lib/apiFetch";
@@ -1247,7 +1248,7 @@ export default function StockDetailPage() {
                       variant="outline"
                       size="sm"
                       className="font-mono text-xs shrink-0"
-                      onClick={() => { window.location.href = "/api/auth/drive/start"; }}
+                      onClick={() => { window.location.href = apiUrl("/api/auth/drive/start"); }}
                     >
                       <ExternalLink className="h-3 w-3 mr-1" />
                       Connect Google Drive

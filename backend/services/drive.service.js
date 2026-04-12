@@ -24,11 +24,21 @@ const DRIVE_UPLOAD_FOLDER_NAME = "Announcements";
 
 function getServiceAccountCredentials() {
   if (SA_JSON_PATH && fs.existsSync(SA_JSON_PATH)) {
-    const raw = fs.readFileSync(SA_JSON_PATH, "utf8");
-    return JSON.parse(raw);
+    try {
+      const raw = fs.readFileSync(SA_JSON_PATH, "utf8");
+      return JSON.parse(raw);
+    } catch (e) {
+      console.error("[Drive] Failed to parse service account JSON file at", SA_JSON_PATH, e.message);
+      return null;
+    }
   }
   if (SA_JSON_STRING) {
-    return JSON.parse(SA_JSON_STRING);
+    try {
+      return JSON.parse(SA_JSON_STRING);
+    } catch (e) {
+      console.error("[Drive] GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Got:", SA_JSON_STRING.slice(0, 60), e.message);
+      return null;
+    }
   }
   return null;
 }

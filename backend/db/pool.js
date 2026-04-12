@@ -12,12 +12,17 @@ try {
   parsedUrl = { username: "", password: "", hostname: "", port: "5432", pathname: "/postgres" };
 }
 
+console.log("[DB DEBUG] user:", parsedUrl.username);
+console.log("[DB DEBUG] host:", parsedUrl.hostname);
+console.log("[DB DEBUG] port:", parsedUrl.port);
+console.log("[DB DEBUG] db:", parsedUrl.pathname);
+
 export const pool = new Pool({
   user: parsedUrl.username,
   password: decodeURIComponent(parsedUrl.password),
   host: parsedUrl.hostname,
   port: parseInt(parsedUrl.port, 10) || 5432,
   database: parsedUrl.pathname.replace("/", ""),
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+  ssl: { rejectUnauthorized: false },
 });
 
