@@ -214,6 +214,55 @@ export default function StockDetailPage() {
     }
   };
 
+  const fetchLocalFileBlob = async (filePath: string) => {
+    const response = await apiFetch(filePath);
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch (_) {}
+      throw new Error(detail || `File download failed (${response.status})`);
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("pdf") && !contentType.toLowerCase().includes("octet-stream")) {
+      let preview = "";
+      try {
+        preview = (await response.text()).slice(0, 180);
+      } catch (_) {}
+      throw new Error(
+        `Backend did not return a PDF (content-type: ${contentType || "unknown"}). ${preview || "Check API auth/base URL."}`,
+      );
+    }
+    const blob = await response.blob();
+    if (blob.size === 0) {
+      throw new Error("Downloaded file is empty.");
+    }
+    return blob;
+  };
+
+  const downloadLocalFile = async (filePath: string, filename: string) => {
+    const blob = await fetchLocalFileBlob(filePath);
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename || "download.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
+
+  const openLocalFile = async (filePath: string) => {
+    const blob = await fetchLocalFileBlob(filePath);
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+    // Give the browser time to load the blob URL in a new tab before revoking.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+  };
+
   const handleResetFiles = async (period: "3m" | "6m" | "1y") => {
     if (!stock) return;
     if (resettingFiles) return;
@@ -1477,8 +1526,19 @@ export default function StockDetailPage() {
                                             className="font-mono text-xs h-6"
                                             onClick={() => {
                                               const driveUrl = f.drive_web_link || (f.drive_file_id ? `https://drive.google.com/file/d/${f.drive_file_id}/view` : null);
-                                              const openUrl = driveUrl || localUrl;
-                                              if (openUrl) window.open(openUrl, "_blank", "noopener,noreferrer");
+                                              if (driveUrl) {
+                                                window.open(driveUrl, "_blank", "noopener,noreferrer");
+                                                return;
+                                              }
+                                              if (f.url) {
+                                                openLocalFile(f.url).catch((err: unknown) => {
+                                                  toast({
+                                                    title: "Open failed",
+                                                    description: err instanceof Error ? err.message : "Unable to open file",
+                                                    variant: "destructive",
+                                                  });
+                                                });
+                                              }
                                             }}
                                           >
                                             <ExternalLink className="h-3 w-3 mr-1" /> Open
@@ -1491,12 +1551,13 @@ export default function StockDetailPage() {
                                               title={hasLocalFile ? "Download from app server" : "Download via Google Drive (opens new tab)"}
                                               onClick={() => {
                                                 if (hasLocalFile && localUrl) {
-                                                  const link = document.createElement("a");
-                                                  link.href = localUrl;
-                                                  link.download = f.filename || undefined;
-                                                  document.body.appendChild(link);
-                                                  link.click();
-                                                  document.body.removeChild(link);
+                                                  downloadLocalFile(f.url!, f.filename).catch((err: unknown) => {
+                                                    toast({
+                                                      title: "Download failed",
+                                                      description: err instanceof Error ? err.message : "Unable to download file",
+                                                      variant: "destructive",
+                                                    });
+                                                  });
                                                 } else if (driveDl) {
                                                   window.open(driveDl, "_blank", "noopener,noreferrer");
                                                 }
@@ -1510,7 +1571,16 @@ export default function StockDetailPage() {
                                               variant="ghost"
                                               size="sm"
                                               className="font-mono text-xs h-6 ml-1 text-muted-foreground"
-                                              onClick={() => localUrl && window.open(localUrl, "_blank", "noopener,noreferrer")}
+                                              onClick={() => {
+                                                if (!f.url) return;
+                                                openLocalFile(f.url).catch((err: unknown) => {
+                                                  toast({
+                                                    title: "Open local failed",
+                                                    description: err instanceof Error ? err.message : "Unable to open local file",
+                                                    variant: "destructive",
+                                                  });
+                                                });
+                                              }}
                                             >
                                               Local
                                             </Button>
