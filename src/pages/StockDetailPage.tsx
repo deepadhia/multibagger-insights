@@ -1455,6 +1455,7 @@ export default function StockDetailPage() {
                                     {items.map((f: { quarter?: string; category?: string; label?: string; filename: string; announcement_date?: string; url?: string | null; drive_web_link?: string; drive_file_id?: string }) => {
                                       const driveDl = driveDirectDownloadUrl(f);
                                       const hasLocalFile = Boolean(f.url);
+                                      const localUrl = f.url ? apiUrl(f.url) : null;
                                       const canDownload = hasLocalFile || Boolean(driveDl);
                                       return (
                                       <tr key={`${f.quarter ?? q}-${f.filename}`} className="border-b border-border/50 hover:bg-muted/30">
@@ -1476,7 +1477,7 @@ export default function StockDetailPage() {
                                             className="font-mono text-xs h-6"
                                             onClick={() => {
                                               const driveUrl = f.drive_web_link || (f.drive_file_id ? `https://drive.google.com/file/d/${f.drive_file_id}/view` : null);
-                                              const openUrl = driveUrl || f.url;
+                                              const openUrl = driveUrl || localUrl;
                                               if (openUrl) window.open(openUrl, "_blank", "noopener,noreferrer");
                                             }}
                                           >
@@ -1489,9 +1490,9 @@ export default function StockDetailPage() {
                                               className="font-mono text-xs h-6 ml-1"
                                               title={hasLocalFile ? "Download from app server" : "Download via Google Drive (opens new tab)"}
                                               onClick={() => {
-                                                if (hasLocalFile && f.url) {
+                                                if (hasLocalFile && localUrl) {
                                                   const link = document.createElement("a");
-                                                  link.href = f.url;
+                                                  link.href = localUrl;
                                                   link.download = f.filename || undefined;
                                                   document.body.appendChild(link);
                                                   link.click();
@@ -1509,7 +1510,7 @@ export default function StockDetailPage() {
                                               variant="ghost"
                                               size="sm"
                                               className="font-mono text-xs h-6 ml-1 text-muted-foreground"
-                                              onClick={() => window.open(f.url, "_blank", "noopener,noreferrer")}
+                                              onClick={() => localUrl && window.open(localUrl, "_blank", "noopener,noreferrer")}
                                             >
                                               Local
                                             </Button>
